@@ -2346,6 +2346,13 @@ input.eps-custom-qty:focus {
   margin: 0 0 4px;
   color: var(--accent);
 }
+.app-version {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
 .login-subtitle {
   text-align: center;
   color: var(--muted);
@@ -2524,4 +2531,45 @@ input.eps-custom-qty:focus {
   margin-top: 12px;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* ── Update overlay ── */
+.update-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 20, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.update-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 48px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.update-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.update-status {
+  color: var(--text);
+  font-size: 15px;
+  margin: 0;
 }

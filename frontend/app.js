@@ -65,6 +65,7 @@ function showLoginScreen() {
   document.getElementById('loginUsername').value = '';
   document.getElementById('loginPassword').value = '';
   populateLoginUsers();
+  displayAppVersion();
 }
 
 function hideLoginScreen() {
@@ -185,12 +186,38 @@ async function checkForUpdate() {
     if (update) {
       const yes = confirm(`有新版本 v${update.version} 可用，是否更新？`);
       if (yes) {
+        const overlay = document.getElementById('updateOverlay');
+        const status = document.getElementById('updateStatus');
+        overlay.classList.remove('hidden');
+        status.textContent = `正在下載 v${update.version}...`;
         await update.downloadAndInstall();
+        status.textContent = '更新完成，正在重新啟動...';
         await process.relaunch();
       }
     }
   } catch (e) {
     console.log('Update check skipped:', e);
+    const overlay = document.getElementById('updateOverlay');
+    if (!overlay.classList.contains('hidden')) {
+      overlay.classList.add('hidden');
+      showToast('更新失敗，請稍後再試。', 'error');
+    }
+  }
+}
+
+// --- Display app version on login screen ---
+async function displayAppVersion() {
+  try {
+    // Try Tauri app plugin first, fall back to core
+    const getVer = window.__TAURI__?.app?.getVersion;
+    if (getVer) {
+      document.getElementById('appVersion').textContent = `v${await getVer()}`;
+    } else {
+      const v = await rawInvoke('plugin:app|version');
+      document.getElementById('appVersion').textContent = `v${v}`;
+    }
+  } catch {
+    // Version display is non-critical
   }
 }
 

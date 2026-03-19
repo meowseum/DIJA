@@ -11,6 +11,7 @@
     <div id="loginScreen" class="login-screen">
       <div class="login-card">
         <h1 class="login-title">DIJA</h1>
+        <span id="appVersion" class="app-version"></span>
 
         <!-- Login Form (default view) -->
         <div id="loginView">
@@ -77,6 +78,14 @@
           </div>
           <div id="sessionExpiredTimer" class="login-timer"></div>
         </form>
+      </div>
+    </div>
+
+    <!-- Update Overlay -->
+    <div id="updateOverlay" class="update-overlay hidden">
+      <div class="update-card">
+        <div class="update-spinner"></div>
+        <p id="updateStatus" class="update-status">正在更新，請稍候...</p>
       </div>
     </div>
 
