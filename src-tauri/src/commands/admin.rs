@@ -69,6 +69,9 @@ pub fn create_user(
     if password_val.len() != 4 || !password_val.chars().all(|c| c.is_ascii_digit()) {
         return json!({"ok": false, "error": "Password must be exactly 4 digits."});
     }
+    if role == "dev" {
+        return json!({"ok": false, "error": "The dev role cannot be assigned manually."});
+    }
 
     let conn = auth_db.lock().unwrap();
 
@@ -155,10 +158,18 @@ pub fn update_user(
         Err(_) => return json!({"ok": false, "error": "User not found."}),
     };
 
+    // Dev accounts cannot be modified by anyone except themselves
+    if current_role == "dev" && session.role != "dev" {
+        return json!({"ok": false, "error": "Cannot modify a dev account."});
+    }
+
     let mut details = Vec::new();
 
     if let Some(new_role) = &role {
         let new_role = new_role.trim().to_lowercase();
+        if new_role == "dev" {
+            return json!({"ok": false, "error": "The dev role cannot be assigned manually."});
+        }
         if new_role != current_role {
             // Validate role exists
             let role_exists: i64 = conn
@@ -246,6 +257,10 @@ pub fn deactivate_user(
         Ok(r) => r,
         Err(_) => return json!({"ok": false, "error": "User not found."}),
     };
+
+    if target_role == "dev" {
+        return json!({"ok": false, "error": "Cannot deactivate a dev account."});
+    }
 
     if target_role == "admin" {
         let admin_count: i64 = conn
@@ -345,12 +360,20 @@ pub fn reset_password(
         return json!({"ok": false, "error": "Password must be exactly 4 digits."});
     }
 
+    let conn = auth_db.lock().unwrap();
+
+    // Block non-dev users from resetting a dev account's password
+    let target_role: String = conn
+        .query_row("SELECT role FROM users WHERE id = ?1", [&user_id], |r| r.get(0))
+        .unwrap_or_default();
+    if target_role == "dev" && session.role != "dev" {
+        return json!({"ok": false, "error": "Cannot reset a dev account's password."});
+    }
+
     let hash = match password::hash_password(&new_password) {
         Ok(h) => h,
         Err(e) => return json!({"ok": false, "error": e}),
     };
-
-    let conn = auth_db.lock().unwrap();
 
     let affected = conn
         .execute(
@@ -440,9 +463,9 @@ pub fn set_role_permissions(
 
     let role = role.trim().to_lowercase();
 
-    // Cannot modify the admin role
-    if role == "admin" {
-        return json!({"ok": false, "error": "The admin role cannot be modified."});
+    // Cannot modify the admin or dev roles
+    if role == "admin" || role == "dev" {
+        return json!({"ok": false, "error": format!("The {} role cannot be modified.", role)});
     }
 
     if role.is_empty() {

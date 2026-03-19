@@ -30,6 +30,7 @@ fn main() {
             // Auth (6)
             commands::auth::check_setup_needed,
             commands::auth::setup_admin,
+            commands::auth::list_login_users,
             commands::auth::login,
             commands::auth::logout,
             commands::auth::get_current_user,
@@ -80,6 +81,9 @@ fn main() {
             commands::settings::import_settings_csv,
             commands::settings::set_level_price,
             commands::settings::adjust_level_prices,
+            commands::settings::set_eps_config,
+            commands::settings::set_eps_item,
+            commands::settings::delete_eps_item,
             // Textbooks (7)
             commands::textbooks::set_textbook,
             commands::textbooks::delete_textbook,

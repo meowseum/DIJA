@@ -259,3 +259,81 @@ pub fn adjust_level_prices(
     save_settings(&settings);
     json!({"ok": true})
 }
+
+// ---------------------------------------------------------------------------
+// EPS config management
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn set_eps_config(
+    session_token: String,
+    key: String,
+    value: String,
+    sessions: tauri::State<'_, SessionStore>,
+    auth_db: tauri::State<'_, AuthDb>,
+) -> Value {
+    let _session = crate::require_auth!(sessions, auth_db, &session_token, "settings.modify");
+    let key = key.trim().to_string();
+    let value = value.trim().to_string();
+    if key.is_empty() {
+        return json!({"ok": false, "error": "Key 不能為空。"});
+    }
+    let mut settings = load_settings();
+    settings.eps_config.insert(key, value);
+    save_settings(&settings);
+    json!({"ok": true})
+}
+
+#[tauri::command]
+pub fn set_eps_item(
+    session_token: String,
+    item_type: String,
+    name: String,
+    price: f64,
+    sessions: tauri::State<'_, SessionStore>,
+    auth_db: tauri::State<'_, AuthDb>,
+) -> Value {
+    let _session = crate::require_auth!(sessions, auth_db, &session_token, "settings.modify");
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return json!({"ok": false, "error": "名稱不能為空。"});
+    }
+    let price_val = (price as i64).max(0);
+    let mut settings = load_settings();
+    let list = match item_type.as_str() {
+        "eps_book" => &mut settings.eps_book,
+        "eps_other" => &mut settings.eps_other,
+        "eps_special" => &mut settings.eps_special,
+        _ => return json!({"ok": false, "error": "類型不正確。"}),
+    };
+    // Update existing or append
+    if let Some(entry) = list.iter_mut().find(|(n, _)| n == &name) {
+        entry.1 = price_val;
+    } else {
+        list.push((name, price_val));
+    }
+    save_settings(&settings);
+    json!({"ok": true})
+}
+
+#[tauri::command]
+pub fn delete_eps_item(
+    session_token: String,
+    item_type: String,
+    name: String,
+    sessions: tauri::State<'_, SessionStore>,
+    auth_db: tauri::State<'_, AuthDb>,
+) -> Value {
+    let _session = crate::require_auth!(sessions, auth_db, &session_token, "settings.modify");
+    let name = name.trim().to_string();
+    let mut settings = load_settings();
+    let list = match item_type.as_str() {
+        "eps_book" => &mut settings.eps_book,
+        "eps_other" => &mut settings.eps_other,
+        "eps_special" => &mut settings.eps_special,
+        _ => return json!({"ok": false, "error": "類型不正確。"}),
+    };
+    list.retain(|(n, _)| n != &name);
+    save_settings(&settings);
+    json!({"ok": true})
+}

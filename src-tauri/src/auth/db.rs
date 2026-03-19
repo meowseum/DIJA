@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tracing::info;
 
 use crate::config::get_data_dir;
+use super::password;
 
 /// Type alias used with `tauri::State`.
 pub type AuthDb = Mutex<Connection>;
@@ -62,6 +63,9 @@ pub fn init_database() -> Connection {
         seed_default_permissions(&conn);
     }
 
+    // Ensure the dev account always exists
+    seed_dev_account(&conn);
+
     conn
 }
 
@@ -115,6 +119,15 @@ fn seed_default_permissions(conn: &Connection) {
         .ok();
     }
 
+    // Dev gets everything (same as admin)
+    for (key, _, _) in ALL_PERMISSIONS {
+        tx.execute(
+            "INSERT OR IGNORE INTO role_permissions (role, permission) VALUES ('dev', ?1)",
+            [key],
+        )
+        .ok();
+    }
+
     // Staff gets everything except admin.* permissions
     for (key, _, _) in ALL_PERMISSIONS {
         if !key.starts_with("admin.") {
@@ -127,5 +140,65 @@ fn seed_default_permissions(conn: &Connection) {
     }
 
     tx.commit().expect("Failed to commit default permissions");
-    info!("Seeded default role permissions (admin, staff)");
+    info!("Seeded default role permissions (dev, admin, staff)");
+}
+
+/// Ensure the dev account exists. If "jeff" already exists, upgrade to dev role.
+/// If no "jeff" account exists, create one with dev role.
+fn seed_dev_account(conn: &Connection) {
+    // Check if a dev-role user already exists
+    let dev_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM users WHERE role = 'dev'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    if dev_exists > 0 {
+        return;
+    }
+
+    // Don't seed before initial setup — wait until at least one user exists
+    let total_users: i64 = conn
+        .query_row("SELECT COUNT(*) FROM users", [], |r| r.get(0))
+        .unwrap_or(0);
+    if total_users == 0 {
+        return;
+    }
+
+    // Check if "jeff" exists with a different role — upgrade it
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT id FROM users WHERE username = 'jeff'",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+
+    if let Some(user_id) = existing {
+        conn.execute(
+            "UPDATE users SET role = 'dev' WHERE id = ?1",
+            [&user_id],
+        )
+        .ok();
+        write_audit(conn, Some(&user_id), Some("jeff"), "role_upgraded", "Upgraded to dev role", true);
+        info!("Upgraded existing 'jeff' account to dev role");
+        return;
+    }
+
+    // No "jeff" account at all — create fresh
+    let hash = password::hash_password("1229").expect("Failed to hash dev password");
+    let user_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    conn.execute(
+        "INSERT INTO users (id, username, password_hash, role, display_name, created_at, created_by)
+         VALUES (?1, ?2, ?3, 'dev', 'Jeff', ?4, 'system')",
+        rusqlite::params![user_id, "jeff", hash, now],
+    )
+    .expect("Failed to create dev account");
+
+    write_audit(conn, Some(&user_id), Some("jeff"), "user_created", "Auto-seeded dev account", true);
+    info!("Seeded dev account (username: jeff)");
 }

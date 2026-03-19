@@ -1,119 +1,186 @@
 use chrono::{Datelike, Duration, NaiveDate};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
 use tracing::info;
 
 use crate::auth::db::AuthDb;
 use crate::auth::session::SessionStore;
-use crate::config::get_eps_template_path;
 use crate::storage::*;
-
-static EPS_ITEMS_CACHE: Mutex<Option<Vec<EpsItem>>> = Mutex::new(None);
 
 #[derive(Debug, Clone)]
 struct EpsItem {
     name: String,
     price: i64,
     section: String,
+    is_custom_slot: bool,
 }
 
-fn parse_hk_price(s: &str) -> Option<i64> {
-    let cleaned = s.trim().replace("HK$", "").replace(",", "").replace(" ", "");
-    if cleaned.is_empty() {
-        return None;
-    }
-    cleaned.parse::<f64>().ok().map(|v| v as i64)
-}
+/// Build EPS items programmatically from settings for the given year.
+/// No CSV template dependency.
+fn build_eps_items(year: i32) -> Vec<EpsItem> {
+    let settings = load_settings();
 
-fn parse_eps_template(app_handle: &tauri::AppHandle) -> Vec<EpsItem> {
-    {
-        let cache = EPS_ITEMS_CACHE.lock().unwrap();
-        if let Some(ref items) = *cache {
-            return items.clone();
-        }
-    }
+    let delta: i64 = settings.eps_config.get("yearly_price_delta")
+        .and_then(|s| s.parse::<f64>().ok())
+        .map(|v| v as i64)
+        .unwrap_or(20);
 
-    let path = get_eps_template_path(app_handle);
-    if !path.exists() {
-        tracing::warn!("EPS template not found: {:?}", path);
-        return Vec::new();
-    }
+    let intensive_mult: f64 = settings.eps_config.get("intensive_multiplier")
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(1.5);
 
-    let mut rdr = match csv::ReaderBuilder::new().has_headers(false).from_path(&path) {
-        Ok(r) => r,
-        Err(_) => return Vec::new(),
+    // Only these levels appear in the EPS class section (regular classes)
+    let regular_levels = ["初級", "中級", "高級", "高級(二)", "深造", "研究(二)", "研究(三)"];
+    // Only these levels have intensive variants
+    let intensive_levels = ["初級", "中級", "高級", "高級(二)"];
+
+    // Short name: remove 級 from the name (e.g., 高級(二) → 高(二))
+    let short_name = |level: &str| -> String {
+        level.replacen("級", "", 1)
     };
 
-    let rows: Vec<csv::StringRecord> = rdr.records().flatten().collect();
-    let mut items = Vec::new();
-    let mut section = "class".to_string();
+    let mut items: Vec<EpsItem> = Vec::new();
+    let prev_year = year - 1;
 
-    for (i, row) in rows.iter().enumerate() {
-        if i < 3 {
-            continue;
-        }
-        let col_a = row.get(0).unwrap_or("").trim();
-        let col_b = row.get(1).unwrap_or("").trim();
+    // --- Class section ---
 
-        if col_a == "書" {
-            section = "book".to_string();
-            continue;
-        }
-        if col_a == "其他" {
-            section = "other".to_string();
-            continue;
-        }
-
-        if col_a.is_empty() || col_a.contains("Sub-total") || col_a.contains("Total") {
-            continue;
-        }
-        if row.iter().any(|c| c.contains("Sub-total")) {
-            continue;
-        }
-
-        let price = match parse_hk_price(col_b) {
-            Some(p) => p,
-            None => continue,
-        };
-
+    // Current year regular
+    for level in &regular_levels {
+        let price = settings.level_price.get(*level).copied().unwrap_or(0);
         items.push(EpsItem {
-            name: col_a.to_string(),
+            name: format!("{} - {}", year, short_name(level)),
             price,
-            section: section.clone(),
+            section: "class".to_string(),
+            is_custom_slot: false,
         });
     }
 
-    let mut cache = EPS_ITEMS_CACHE.lock().unwrap();
-    *cache = Some(items.clone());
+    // Previous year regular
+    for level in &regular_levels {
+        let price = (settings.level_price.get(*level).copied().unwrap_or(0) - delta).max(0);
+        items.push(EpsItem {
+            name: format!("{} - {}", prev_year, short_name(level)),
+            price,
+            section: "class".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Current year intensive
+    for level in &intensive_levels {
+        let base_price = settings.level_price.get(*level).copied().unwrap_or(0);
+        let price = (base_price as f64 * intensive_mult).round() as i64;
+        items.push(EpsItem {
+            name: format!("密集{} - {}", year, short_name(level)),
+            price,
+            section: "class".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Previous year intensive
+    for level in &intensive_levels {
+        let base_price = (settings.level_price.get(*level).copied().unwrap_or(0) - delta).max(0);
+        let price = (base_price as f64 * intensive_mult).round() as i64;
+        items.push(EpsItem {
+            name: format!("密集{} - {}", prev_year, short_name(level)),
+            price,
+            section: "class".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Special class items (會話班, 密集三五 combos, etc.)
+    for (name, price) in &settings.eps_special {
+        items.push(EpsItem {
+            name: name.clone(),
+            price: *price,
+            section: "class".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Custom slot for class section
+    items.push(EpsItem {
+        name: String::new(),
+        price: 0,
+        section: "class".to_string(),
+        is_custom_slot: true,
+    });
+
+    // --- Book section ---
+    for (name, price) in &settings.eps_book {
+        items.push(EpsItem {
+            name: name.clone(),
+            price: *price,
+            section: "book".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Custom slots for book section (4 blank rows like original template)
+    for _ in 0..4 {
+        items.push(EpsItem {
+            name: String::new(),
+            price: 0,
+            section: "book".to_string(),
+            is_custom_slot: true,
+        });
+    }
+
+    // --- Other section ---
+    for (name, price) in &settings.eps_other {
+        items.push(EpsItem {
+            name: name.clone(),
+            price: *price,
+            section: "other".to_string(),
+            is_custom_slot: false,
+        });
+    }
+
+    // Custom slots for other section (2 blank rows)
+    for _ in 0..2 {
+        items.push(EpsItem {
+            name: String::new(),
+            price: 0,
+            section: "other".to_string(),
+            is_custom_slot: true,
+        });
+    }
+
     items
 }
 
 #[tauri::command]
 pub fn load_eps_items(
     session_token: String,
-    app_handle: tauri::AppHandle,
+    year: i32,
     sessions: tauri::State<'_, SessionStore>,
     auth_db: tauri::State<'_, AuthDb>,
 ) -> Value {
     let _session = crate::require_auth!(sessions, auth_db, &session_token, "eps.view");
 
-    let items = parse_eps_template(&app_handle);
-    let items_json: Vec<Value> = items.iter().map(|i| json!({"name": i.name, "price": i.price, "section": i.section})).collect();
+    let items = build_eps_items(year);
+    let items_json: Vec<Value> = items.iter().map(|i| json!({
+        "name": i.name,
+        "price": i.price,
+        "section": i.section,
+        "is_custom_slot": i.is_custom_slot,
+    })).collect();
     json!({"ok": true, "items": items_json})
 }
 
 #[tauri::command]
 pub fn load_eps_record(
     session_token: String,
-    app_handle: tauri::AppHandle,
     date_str: String,
+    year: i32,
     sessions: tauri::State<'_, SessionStore>,
     auth_db: tauri::State<'_, AuthDb>,
 ) -> Value {
     let _session = crate::require_auth!(sessions, auth_db, &session_token, "eps.view");
 
-    let items = parse_eps_template(&app_handle);
+    let items = build_eps_items(year);
     let rows = load_eps_records(&date_str);
     let audit = load_eps_audit(&date_str);
 
@@ -125,6 +192,29 @@ pub fn load_eps_record(
             r.get("period").unwrap_or(&String::new()).trim().to_string(),
         );
         lookup.insert(key, r.clone());
+    }
+
+    // Collect custom rows (items saved with _custom section suffix)
+    let mut custom_rows_before: Vec<Value> = Vec::new();
+    let mut custom_rows_after: Vec<Value> = Vec::new();
+    for r in &rows {
+        let section = r.get("item_section").map(|s| s.trim()).unwrap_or("");
+        if section.ends_with("_custom") {
+            let period = r.get("period").map(|s| s.trim()).unwrap_or("");
+            let entry = json!({
+                "item_name": r.get("item_name").map(|s| s.trim()).unwrap_or(""),
+                "item_price": r.get("item_price").and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0),
+                "item_section": section,
+                "qty_K": r.get("qty_K").and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0),
+                "qty_L": r.get("qty_L").and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0),
+                "qty_HK": r.get("qty_HK").and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0),
+            });
+            if period == "before" {
+                custom_rows_before.push(entry);
+            } else {
+                custom_rows_after.push(entry);
+            }
+        }
     }
 
     // Yesterday for carry-over
@@ -146,6 +236,24 @@ pub fn load_eps_record(
     let mut records_after: Vec<Value> = Vec::new();
 
     for item in &items {
+        if item.is_custom_slot {
+            // Custom slots are sent separately
+            for period in &["before", "after"] {
+                let entry = json!({
+                    "item_name": "",
+                    "qty_K": 0,
+                    "qty_L": 0,
+                    "qty_HK": 0,
+                });
+                if *period == "before" {
+                    records_before.push(entry);
+                } else {
+                    records_after.push(entry);
+                }
+            }
+            continue;
+        }
+
         for period in &["before", "after"] {
             let r = lookup.get(&(item.name.clone(), period.to_string()));
             let mut qty_k = r.and_then(|r| r.get("qty_K")).and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
@@ -191,6 +299,7 @@ pub fn load_eps_record(
     json!({
         "ok": true,
         "records": {"before": records_before, "after": records_after},
+        "custom_records": {"before": custom_rows_before, "after": custom_rows_after},
         "audit": audit_data,
         "past_day_carry": past_day_carry,
     })
@@ -199,16 +308,17 @@ pub fn load_eps_record(
 #[tauri::command]
 pub fn save_eps_record(
     session_token: String,
-    app_handle: tauri::AppHandle,
     date_str: String,
+    year: i32,
     records: Value,
     audit: Value,
+    custom_records: Value,
     sessions: tauri::State<'_, SessionStore>,
     auth_db: tauri::State<'_, AuthDb>,
 ) -> Value {
     let _session = crate::require_auth!(sessions, auth_db, &session_token, "eps.modify");
 
-    let items = parse_eps_template(&app_handle);
+    let items = build_eps_items(year);
     let mut csv_rows: Vec<HashMap<String, String>> = Vec::new();
     let mut sheet_before: i64 = 0;
     let mut sheet_after: i64 = 0;
@@ -220,6 +330,9 @@ pub fn save_eps_record(
                 break;
             }
             let item = &items[idx];
+            if item.is_custom_slot {
+                continue; // Custom slots saved separately
+            }
             let qty_k = entry.get("qty_K").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
             let qty_l = entry.get("qty_L").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
             let qty_hk = entry.get("qty_HK").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
@@ -232,6 +345,35 @@ pub fn save_eps_record(
             row.insert("item_name".to_string(), item.name.clone());
             row.insert("item_price".to_string(), item.price.to_string());
             row.insert("item_section".to_string(), item.section.clone());
+            row.insert("qty_K".to_string(), qty_k.to_string());
+            row.insert("qty_L".to_string(), qty_l.to_string());
+            row.insert("qty_HK".to_string(), qty_hk.to_string());
+            row.insert("subtotal".to_string(), subtotal.to_string());
+            row.insert("period".to_string(), period.to_string());
+            csv_rows.push(row);
+        }
+
+        // Save custom rows for this period
+        let custom_period = custom_records.get(*period).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+        for entry in &custom_period {
+            let name = entry.get("item_name").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            let price = entry.get("item_price").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+            let section = entry.get("item_section").and_then(|v| v.as_str()).unwrap_or("class_custom").trim().to_string();
+            if name.is_empty() && price == 0 {
+                continue;
+            }
+            let qty_k = entry.get("qty_K").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+            let qty_l = entry.get("qty_L").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+            let qty_hk = entry.get("qty_HK").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+            let subtotal = price * (qty_k + qty_l + qty_hk);
+
+            if *period == "before" { sheet_before += subtotal; } else { sheet_after += subtotal; }
+
+            let mut row = HashMap::new();
+            row.insert("date".to_string(), date_str.clone());
+            row.insert("item_name".to_string(), name);
+            row.insert("item_price".to_string(), price.to_string());
+            row.insert("item_section".to_string(), section);
             row.insert("qty_K".to_string(), qty_k.to_string());
             row.insert("qty_L".to_string(), qty_l.to_string());
             row.insert("qty_HK".to_string(), qty_hk.to_string());
@@ -300,8 +442,8 @@ pub fn save_eps_record(
 #[tauri::command]
 pub fn export_eps_csv(
     session_token: String,
-    app_handle: tauri::AppHandle,
     date_str: String,
+    year: i32,
     sessions: tauri::State<'_, SessionStore>,
     auth_db: tauri::State<'_, AuthDb>,
 ) -> Value {
@@ -309,16 +451,41 @@ pub fn export_eps_csv(
 
     use std::fmt::Write;
 
-    let items = parse_eps_template(&app_handle);
+    let items = build_eps_items(year);
     let rows = load_eps_records(&date_str);
 
-    // Merge quantities per item
+    // Merge quantities per item (both periods combined for export)
     let mut merged: HashMap<String, [i64; 3]> = HashMap::new();
+    // Also collect custom rows for export
+    let mut custom_items: Vec<EpsItem> = Vec::new();
+    let mut custom_merged: HashMap<String, [i64; 3]> = HashMap::new();
+
     for r in &rows {
         let name = r.get("item_name").unwrap_or(&String::new()).trim().to_string();
-        let entry = merged.entry(name).or_insert([0, 0, 0]);
-        for (i, key) in ["qty_K", "qty_L", "qty_HK"].iter().enumerate() {
-            entry[i] += r.get(*key).and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+        let section = r.get("item_section").map(|s| s.trim()).unwrap_or("");
+
+        if section.ends_with("_custom") {
+            let base_section = section.strip_suffix("_custom").unwrap_or("class").to_string();
+            let price = r.get("item_price").and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+            if !name.is_empty() {
+                if !custom_merged.contains_key(&name) {
+                    custom_items.push(EpsItem {
+                        name: name.clone(),
+                        price,
+                        section: base_section,
+                        is_custom_slot: false,
+                    });
+                }
+                let entry = custom_merged.entry(name).or_insert([0, 0, 0]);
+                for (i, key) in ["qty_K", "qty_L", "qty_HK"].iter().enumerate() {
+                    entry[i] += r.get(*key).and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+                }
+            }
+        } else {
+            let entry = merged.entry(name).or_insert([0, 0, 0]);
+            for (i, key) in ["qty_K", "qty_L", "qty_HK"].iter().enumerate() {
+                entry[i] += r.get(*key).and_then(|s| s.trim().parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+            }
         }
     }
 
@@ -327,7 +494,7 @@ pub fn export_eps_csv(
         .ok()
         .map(|d| (d.format("%Y/%m/%d").to_string(), day_names[d.weekday().num_days_from_monday() as usize].to_string()))
         .unwrap_or((date_str.clone(), String::new()));
-    let year = if date_str.len() >= 4 { &date_str[..4] } else { "" };
+    let year_str = if date_str.len() >= 4 { &date_str[..4] } else { "" };
 
     let hk_fmt = |v: i64| -> String { format!("HK${}", v) };
     let price_fmt = |v: i64| -> String { if v >= 1000 { format!("HK${},{}  ", v / 1000, v % 1000) } else { format!("HK${} ", v) } };
@@ -337,7 +504,7 @@ pub fn export_eps_csv(
 <style>
 @page {{ margin: 0.17in 0.16in 0.17in 0.12in; }}
 body {{ margin: 0; }}
-table {{ border-collapse: collapse; table-layout: fixed; }}
+table {{ border-collapse: collapse; table-layout: fixed; margin: 0 auto; }}
 td {{ font-family: "Times New Roman", serif; font-size: 14pt; vertical-align: middle;
      white-space: nowrap; padding: 1px 4px; }}
 .hdr-year {{ font-size: 12pt; text-align: right; }}
@@ -386,7 +553,7 @@ td {{ font-family: "Times New Roman", serif; font-size: 14pt; vertical-align: mi
  <td colspan=11></td>
  <td class="date-label">Date:</td><td class="date-val">{}</td>
  <td class="dow">{}</td>
-</tr>"#, year, date_display, dow);
+</tr>"#, year_str, date_display, dow);
 
     // Row 2: Title
     let _ = write!(h, r#"<tr height=22>
@@ -426,37 +593,19 @@ td {{ font-family: "Times New Roman", serif; font-size: 14pt; vertical-align: mi
 
     let spacer = r#"<tr class="spacer-row"><td colspan=17></td></tr>"#;
 
-    for item in &items {
-        if current_section.as_deref() != Some(&item.section) {
-            if current_section.as_deref() == Some("class") {
-                h.push_str(&subtotal_row("class", &section_totals, &loc_totals));
-                h.push_str(spacer);
-                let _ = write!(h, r#"<tr height=29>
- <td></td><td colspan=16 class="section-hdr">書</td>
-</tr>"#);
-            } else if current_section.as_deref() == Some("book") && item.section == "other" {
-                h.push_str(&subtotal_row("book", &section_totals, &loc_totals));
-                h.push_str(spacer);
-                let _ = write!(h, r#"<tr height=29>
- <td></td><td colspan=2 class="section-hdr">其他</td>
- <td colspan=4 class="section-hdr-r">&nbsp;</td>
- <td colspan=4 class="section-hdr-r">&nbsp;</td>
- <td colspan=4 class="section-hdr-r">&nbsp;</td>
- <td class="section-hdr-r">&nbsp;</td><td class="section-hdr-r">&nbsp;</td>
-</tr>"#);
-            }
-            current_section = Some(item.section.clone());
-        }
-
-        let m = merged.get(&item.name).copied().unwrap_or([0, 0, 0]);
-        let sub_k = item.price * m[0];
-        let sub_l = item.price * m[1];
-        let sub_hk = item.price * m[2];
+    // Helper to write an item row
+    let write_item_row = |h: &mut String, name: &str, price: i64, m: [i64; 3], section: &str,
+                           section_totals: &mut HashMap<String, i64>,
+                           loc_totals: &mut HashMap<String, [i64; 3]>,
+                           grand_total: &mut i64| {
+        let sub_k = price * m[0];
+        let sub_l = price * m[1];
+        let sub_hk = price * m[2];
         let total = sub_k + sub_l + sub_hk;
-        *section_totals.get_mut(&item.section).unwrap() += total;
-        let lt = loc_totals.get_mut(&item.section).unwrap();
+        *section_totals.get_mut(section).unwrap() += total;
+        let lt = loc_totals.get_mut(section).unwrap();
         lt[0] += sub_k; lt[1] += sub_l; lt[2] += sub_hk;
-        grand_total += total;
+        *grand_total += total;
 
         let qk_s = if m[0] != 0 { m[0].to_string() } else { "&nbsp;".to_string() };
         let ql_s = if m[1] != 0 { m[1].to_string() } else { "&nbsp;".to_string() };
@@ -471,11 +620,69 @@ td {{ font-family: "Times New Roman", serif; font-size: 14pt; vertical-align: mi
  <td class="qty-x">X</td><td class="qty-n">{}</td><td class="qty-eq">=</td><td class="qty-val">{}</td>
  <td class="row-total">{}</td>
  <td class="row-remark">&nbsp;</td>
-</tr>"#, item.name, price_fmt(item.price), qk_s, sub_k, ql_s, sub_l, qh_s, sub_hk, total);
+</tr>"#, name, price_fmt(price), qk_s, sub_k, ql_s, sub_l, qh_s, sub_hk, total);
+    };
+
+    // Track which custom items we've already written per section
+    let mut custom_written: HashMap<String, bool> = HashMap::new();
+
+    for item in &items {
+        if item.is_custom_slot {
+            continue; // Skip blank slots in export
+        }
+
+        if current_section.as_deref() != Some(&item.section) {
+            // Before transitioning to next section, write custom rows for current section
+            if let Some(ref prev_section) = current_section {
+                if !custom_written.contains_key(prev_section) {
+                    custom_written.insert(prev_section.clone(), true);
+                    for ci in &custom_items {
+                        if ci.section == *prev_section {
+                            let cm = custom_merged.get(&ci.name).copied().unwrap_or([0, 0, 0]);
+                            write_item_row(&mut h, &ci.name, ci.price, cm, prev_section,
+                                &mut section_totals, &mut loc_totals, &mut grand_total);
+                        }
+                    }
+                }
+
+                if prev_section == "class" {
+                    h.push_str(&subtotal_row("class", &section_totals, &loc_totals));
+                    h.push_str(spacer);
+                    let _ = write!(h, r#"<tr height=29>
+ <td></td><td colspan=16 class="section-hdr">書</td>
+</tr>"#);
+                } else if prev_section == "book" && item.section == "other" {
+                    h.push_str(&subtotal_row("book", &section_totals, &loc_totals));
+                    h.push_str(spacer);
+                    let _ = write!(h, r#"<tr height=29>
+ <td></td><td colspan=2 class="section-hdr">其他</td>
+ <td colspan=4 class="section-hdr-r">&nbsp;</td>
+ <td colspan=4 class="section-hdr-r">&nbsp;</td>
+ <td colspan=4 class="section-hdr-r">&nbsp;</td>
+ <td class="section-hdr-r">&nbsp;</td><td class="section-hdr-r">&nbsp;</td>
+</tr>"#);
+                }
+            }
+            current_section = Some(item.section.clone());
+        }
+
+        let m = merged.get(&item.name).copied().unwrap_or([0, 0, 0]);
+        write_item_row(&mut h, &item.name, item.price, m, &item.section,
+            &mut section_totals, &mut loc_totals, &mut grand_total);
     }
 
-    if let Some(ref section) = current_section {
-        h.push_str(&subtotal_row(section, &section_totals, &loc_totals));
+    // Write custom rows for the last section
+    if let Some(ref last_section) = current_section {
+        if !custom_written.contains_key(last_section) {
+            for ci in &custom_items {
+                if ci.section == *last_section {
+                    let cm = custom_merged.get(&ci.name).copied().unwrap_or([0, 0, 0]);
+                    write_item_row(&mut h, &ci.name, ci.price, cm, last_section,
+                        &mut section_totals, &mut loc_totals, &mut grand_total);
+                }
+            }
+        }
+        h.push_str(&subtotal_row(last_section, &section_totals, &loc_totals));
     }
 
     let _ = write!(h, r#"<tr height=21>

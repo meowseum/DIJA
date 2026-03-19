@@ -17,7 +17,9 @@
           <form id="loginForm" class="login-form">
             <label class="login-label">
               用戶名稱
-              <input type="text" id="loginUsername" autocomplete="off" required />
+              <select id="loginUsername" required>
+                <option value="" disabled selected>選擇用戶</option>
+              </select>
             </label>
             <label class="login-label">
               密碼
@@ -98,55 +100,91 @@
           <option value="H">香港</option>
         </select>
         <nav class="tabs sidebar-tabs">
-          <button class="tab-button active" data-tab="classes" title="班別">
-            <span class="tab-label">班別</span>
-            <span class="tab-icon">班</span>
-          </button>
-          <button class="tab-button" data-tab="reminders" title="門牌/問卷">
-            <span class="tab-label">門牌/問卷</span>
-            <span class="tab-icon">問</span>
-          </button>
-          <button class="tab-button" data-tab="settings" title="資料設定">
-            <span class="tab-label">資料設定</span>
-            <span class="tab-icon">設</span>
-          </button>
-          <button class="tab-button" data-tab="fee-guide" title="學費指引">
-            <span class="tab-label">學費指引</span>
-            <span class="tab-icon">費</span>
-          </button>
-          <button class="tab-button" data-tab="docx-output" title="文件輸出">
-            <span class="tab-label">文件輸出</span>
-            <span class="tab-icon">印</span>
-          </button>
-          <button class="tab-button" data-tab="messages" title="常用訊息">
-            <span class="tab-label">常用訊息</span>
-            <span class="tab-icon">訊</span>
-          </button>
-          <button class="tab-button" data-tab="makeup-plan" title="補課安排">
-            <span class="tab-label">補課安排</span>
-            <span class="tab-icon">補</span>
-          </button>
-          <button class="tab-button" data-tab="promote-notice" title="升班通知">
-            <span class="tab-label">升班通知</span>
-            <span class="tab-icon">升</span>
-          </button>
-          <button class="tab-button" data-tab="stock" title="存貨">
-            <span class="tab-label">存貨</span>
-            <span class="tab-icon">存</span>
-          </button>
-          <button class="tab-button" data-tab="eps-audit" title="EPS 記錄">
-            <span class="tab-label">EPS 記錄</span>
-            <span class="tab-icon">E</span>
-          </button>
           <button class="tab-button tab-pinned" data-tab="tasks" data-pinned="true" title="待辦事項">
             <span class="tab-label">待辦事項</span>
             <span class="tab-icon">事</span>
           </button>
-          <button class="tab-button hidden" data-tab="admin" id="adminTabBtn" title="管理員">
-            <span class="tab-label">管理員</span>
-            <span class="tab-icon">管</span>
-          </button>
           <div class="tab-divider"></div>
+          <div class="sidebar-category" data-category="student">
+            <button class="category-header" type="button">
+              <span class="category-arrow">▾</span>
+              <span class="category-label">學生管理</span>
+              <span class="category-icon">🎓</span>
+            </button>
+            <div class="category-body">
+              <button class="tab-button active" data-tab="classes" title="班別">
+                <span class="tab-label">班別</span>
+                <span class="tab-icon">班</span>
+              </button>
+              <button class="tab-button" data-tab="reminders" title="門牌/問卷">
+                <span class="tab-label">門牌/問卷</span>
+                <span class="tab-icon">問</span>
+              </button>
+              <button class="tab-button" data-tab="fee-guide" title="學費指引">
+                <span class="tab-label">學費指引</span>
+                <span class="tab-icon">費</span>
+              </button>
+              <button class="tab-button" data-tab="makeup-plan" title="補課安排">
+                <span class="tab-label">補課安排</span>
+                <span class="tab-icon">補</span>
+              </button>
+              <button class="tab-button" data-tab="promote-notice" title="升班通知">
+                <span class="tab-label">升班通知</span>
+                <span class="tab-icon">升</span>
+              </button>
+            </div>
+          </div>
+          <div class="sidebar-category" data-category="documents">
+            <button class="category-header" type="button">
+              <span class="category-arrow">▾</span>
+              <span class="category-label">文件通訊</span>
+              <span class="category-icon">📄</span>
+            </button>
+            <div class="category-body">
+              <button class="tab-button" data-tab="docx-output" title="文件輸出">
+                <span class="tab-label">文件輸出</span>
+                <span class="tab-icon">印</span>
+              </button>
+              <button class="tab-button" data-tab="messages" title="常用訊息">
+                <span class="tab-label">常用訊息</span>
+                <span class="tab-icon">訊</span>
+              </button>
+            </div>
+          </div>
+          <div class="sidebar-category" data-category="operations">
+            <button class="category-header" type="button">
+              <span class="category-arrow">▾</span>
+              <span class="category-label">營運</span>
+              <span class="category-icon">⚙️</span>
+            </button>
+            <div class="category-body">
+              <button class="tab-button" data-tab="settings" title="資料設定">
+                <span class="tab-label">資料設定</span>
+                <span class="tab-icon">設</span>
+              </button>
+              <button class="tab-button" data-tab="stock" title="存貨">
+                <span class="tab-label">存貨</span>
+                <span class="tab-icon">存</span>
+              </button>
+              <button class="tab-button" data-tab="eps-audit" title="EPS 記錄">
+                <span class="tab-label">EPS 記錄</span>
+                <span class="tab-icon">E</span>
+              </button>
+            </div>
+          </div>
+          <div class="sidebar-category" data-category="admin">
+            <button class="category-header" type="button">
+              <span class="category-arrow">▾</span>
+              <span class="category-label">管理</span>
+              <span class="category-icon">🔒</span>
+            </button>
+            <div class="category-body">
+              <button class="tab-button hidden" data-tab="admin" id="adminTabBtn" title="管理員">
+                <span class="tab-label">管理員</span>
+                <span class="tab-icon">管</span>
+              </button>
+            </div>
+          </div>
         </nav>
         <button id="tabOrderToggle" class="tab-order-toggle" type="button">🔒 鎖定排序</button>
       </aside>
@@ -576,6 +614,90 @@
 
           </div>
         </section>
+
+        <section class="settings-group">
+          <div class="settings-group-header">
+            <h2>EPS 設定</h2>
+          </div>
+          <div class="grid">
+
+          <div class="card card-collapsible collapsed" data-collapsible="eps-config">
+            <div class="card-header">
+              <h2>價格參數</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form">
+              <label>
+                每年價格差額 ($)
+                <input type="number" id="epsConfigDelta" min="0" value="20" />
+              </label>
+              <label>
+                密集班倍數
+                <input type="number" id="epsConfigMultiplier" step="0.1" min="1" value="1.5" />
+              </label>
+              <button id="epsConfigSaveBtn" class="btn primary" type="button">儲存</button>
+            </div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="eps-book-list">
+            <div class="card-header">
+              <h2>EPS 書簿項目</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form eps-item-form" data-eps-type="eps_book">
+              <label>
+                名稱
+                <input type="text" class="eps-item-name-input" placeholder="新 DIJ (一) 書" />
+              </label>
+              <label>
+                價格 ($)
+                <input type="number" class="eps-item-price-input" min="0" placeholder="100" />
+              </label>
+              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+            </div>
+            <div class="list" id="epsBookList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="eps-other-list">
+            <div class="card-header">
+              <h2>EPS 其他項目</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form eps-item-form" data-eps-type="eps_other">
+              <label>
+                名稱
+                <input type="text" class="eps-item-name-input" placeholder="學生証" />
+              </label>
+              <label>
+                價格 ($)
+                <input type="number" class="eps-item-price-input" min="0" placeholder="50" />
+              </label>
+              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+            </div>
+            <div class="list" id="epsOtherList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="eps-special-list">
+            <div class="card-header">
+              <h2>EPS 特別班項目</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form eps-item-form" data-eps-type="eps_special">
+              <label>
+                名稱
+                <input type="text" class="eps-item-name-input" placeholder="會話班" />
+              </label>
+              <label>
+                價格 ($)
+                <input type="number" class="eps-item-price-input" min="0" placeholder="870" />
+              </label>
+              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+            </div>
+            <div class="list" id="epsSpecialList"></div>
+          </div>
+
+          </div>
+        </section>
         </section>
 
         <section class="tab-content" data-tab-content="fee-guide">
@@ -859,6 +981,10 @@
             <div class="card-header">
               <h2>EPS 記錄</h2>
               <div class="filters">
+                <button id="epsYearMinus" class="btn secondary" type="button" title="上一年">&#x25C0;</button>
+                <span id="epsYearDisplay" class="pill" style="min-width:50px;text-align:center;font-weight:700"></span>
+                <button id="epsYearPlus" class="btn secondary" type="button" title="下一年">&#x25B6;</button>
+                <span style="width:12px"></span>
                 <button id="epsPrevDay" class="btn secondary" type="button">&#x25C0;</button>
                 <input type="date" id="epsDatePicker" />
                 <button id="epsNextDay" class="btn secondary" type="button">&#x25B6;</button>

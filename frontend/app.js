@@ -1,5 +1,13 @@
 const { invoke: rawInvoke } = window.__TAURI__.core;
 
+// --- Sidebar category → tab mapping ---
+const CATEGORY_TABS = {
+  student: ['classes', 'reminders', 'fee-guide', 'makeup-plan', 'promote-notice'],
+  documents: ['docx-output', 'messages'],
+  operations: ['settings', 'stock', 'eps-audit'],
+  admin: ['admin'],
+};
+
 // --- Auth state ---
 let sessionToken = null;
 let currentUser = null;
@@ -9,7 +17,7 @@ let _graceTimerId = null;
 /** Auth-aware invoke wrapper. Injects session_token into every call. */
 async function invoke(command, args = {}) {
   // These commands don't need auth
-  const noAuth = ['check_setup_needed', 'setup_admin', 'login'];
+  const noAuth = ['check_setup_needed', 'setup_admin', 'login', 'list_login_users'];
   if (!noAuth.includes(command) && sessionToken) {
     args.sessionToken = sessionToken;
   }
@@ -32,13 +40,31 @@ function handleSessionExpired() {
   showSessionExpiredPrompt();
 }
 
+async function populateLoginUsers() {
+  const sel = document.getElementById('loginUsername');
+  try {
+    const r = await rawInvoke('list_login_users');
+    if (!r.ok) return;
+    // Keep the placeholder, replace the rest
+    sel.innerHTML = '<option value="" disabled selected>選擇用戶</option>';
+    for (const u of r.users) {
+      const opt = document.createElement('option');
+      opt.value = u.username;
+      opt.textContent = u.display_name || u.username;
+      sel.appendChild(opt);
+    }
+  } catch (e) {
+    console.error('Failed to load login users:', e);
+  }
+}
+
 function showLoginScreen() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('mainApp').classList.add('hidden');
   document.getElementById('loginError').classList.add('hidden');
   document.getElementById('loginUsername').value = '';
   document.getElementById('loginPassword').value = '';
-  document.getElementById('loginUsername').focus();
+  populateLoginUsers();
 }
 
 function hideLoginScreen() {
@@ -73,6 +99,7 @@ async function doLogout(skipApi) {
   sessionToken = null;
   currentUser = null;
   currentPermissions = new Set();
+  try { localStorage.removeItem('dij_active_tab'); } catch {}
   document.getElementById('sessionExpiredOverlay').classList.add('hidden');
   showLoginScreen();
 }
@@ -107,6 +134,9 @@ function applyPermissions(perms) {
     }
   });
 
+  // Update category visibility based on tab permissions
+  updateCategoryVisibility();
+
   // User info bar
   if (currentUser) {
     document.getElementById('userDisplayName').textContent = currentUser.display_name || currentUser.username;
@@ -114,11 +144,28 @@ function applyPermissions(perms) {
   }
 }
 
+// --- Helper: reset active tab to first permitted tab ---
+function resetActiveTab() {
+  if (typeof epsObserverPaused !== 'undefined') epsObserverPaused = true;
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+  const firstVisible = document.querySelector('.tab-button:not(.hidden):not([data-pinned])');
+  if (firstVisible) {
+    ensureCategoryExpanded(firstVisible);
+    firstVisible.classList.add('active');
+    const target = firstVisible.dataset.tab;
+    const content = document.querySelector(`[data-tab-content="${target}"]`);
+    if (content) content.classList.add('active');
+  }
+  if (typeof epsObserverPaused !== 'undefined') epsObserverPaused = false;
+}
+
 // --- Helper: complete login after successful auth result ---
 function completeLogin(result) {
   sessionToken = result.token;
   currentUser = result.user;
   applyPermissions(result.permissions);
+  resetActiveTab();
   hideLoginScreen();
   loadState();
   loadFeeTemplate();
@@ -309,6 +356,7 @@ async function loadAdminUsers() {
     tbody.innerHTML = '';
     for (const u of r.users) {
       const tr = document.createElement('tr');
+      const isDev = u.role === 'dev';
       tr.innerHTML = `
         <td>${esc(u.username)}</td>
         <td>${esc(u.display_name)}</td>
@@ -316,11 +364,11 @@ async function loadAdminUsers() {
         <td>${u.last_login || '—'}</td>
         <td class="${u.active ? 'status-active' : 'status-inactive'}">${u.active ? '啟用' : '停用'}</td>
         <td>
-          <button class="action-btn" data-action="reset-pw" data-id="${u.id}">重設密碼</button>
-          ${u.active
+          ${isDev ? '' : `<button class="action-btn" data-action="reset-pw" data-id="${u.id}">重設密碼</button>`}
+          ${isDev ? '' : (u.active
             ? `<button class="action-btn danger" data-action="deactivate" data-id="${u.id}">停用</button>`
-            : `<button class="action-btn" data-action="reactivate" data-id="${u.id}">啟用</button>`}
-          <button class="action-btn" data-action="edit-role" data-id="${u.id}" data-role="${u.role}">更改角色</button>
+            : `<button class="action-btn" data-action="reactivate" data-id="${u.id}">啟用</button>`)}
+          ${isDev ? '' : `<button class="action-btn" data-action="edit-role" data-id="${u.id}" data-role="${u.role}">更改角色</button>`}
         </td>`;
       tbody.appendChild(tr);
     }
@@ -378,6 +426,7 @@ async function loadAdminRoles() {
     const sel = document.getElementById('roleSelect');
     sel.innerHTML = '';
     for (const role of rolesR.roles) {
+      if (role === 'dev') continue;
       const opt = document.createElement('option');
       opt.value = role;
       opt.textContent = role;
@@ -420,7 +469,7 @@ async function loadRolePerms() {
 
 document.getElementById('saveRolePermsBtn').addEventListener('click', async () => {
   const role = document.getElementById('roleSelect').value;
-  if (role === 'admin') { alert('Admin 角色不可修改。'); return; }
+  if (role === 'admin' || role === 'dev') { alert('此角色不可修改。'); return; }
   const perms = [];
   document.querySelectorAll('#permissionsList input[type="checkbox"]:checked').forEach(cb => perms.push(cb.value));
   const r = await invoke('set_role_permissions', { role, permissionList: perms });
@@ -1066,6 +1115,36 @@ function renderSettings() {
   initFeeGuideSelectors();
   renderPriceSettings();
   renderTextbookSettings();
+  renderEpsConfigSettings();
+}
+
+function renderEpsConfigSettings() {
+  const settings = appState.settings || {};
+  const epsConfig = settings.eps_config || {};
+
+  // Populate config inputs
+  const deltaInput = document.getElementById("epsConfigDelta");
+  const multInput = document.getElementById("epsConfigMultiplier");
+  if (deltaInput) deltaInput.value = epsConfig.yearly_price_delta || 20;
+  if (multInput) multInput.value = epsConfig.intensive_multiplier || 1.5;
+
+  // Render eps_book, eps_other, eps_special lists
+  const renderEpsList = (listId, items) => {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    if (!items || items.length === 0) {
+      el.innerHTML = '<p class="muted-hint">尚無項目</p>';
+      return;
+    }
+    el.innerHTML = items.map((it) =>
+      `<div class="list-item"><span>${it.name} — $${it.price}</span>
+       <button class="btn secondary small" data-eps-delete="${it.name}">刪除</button></div>`
+    ).join("");
+  };
+
+  renderEpsList("epsBookList", settings.eps_book || []);
+  renderEpsList("epsOtherList", settings.eps_other || []);
+  renderEpsList("epsSpecialList", settings.eps_special || []);
 }
 
 function renderDocxTemplates() {
@@ -1318,25 +1397,20 @@ function applyTabOrder() {
     .map((item) => item.trim())
     .filter(Boolean);
   if (!order.length) return;
-  // Pinned tabs always stay first — move them to front before reordering the rest
-  const pinnedButtons = Array.from(tabNav.querySelectorAll(".tab-button[data-pinned]"));
-  pinnedButtons.forEach((btn) => tabNav.insertBefore(btn, tabNav.firstChild));
-  // Ensure the divider after pinned tabs stays right after them
-  const divider = tabNav.querySelector(".tab-divider");
-  if (divider && pinnedButtons.length) {
-    const lastPinned = pinnedButtons[pinnedButtons.length - 1];
-    lastPinned.after(divider);
-  }
-  // Reorder non-pinned tabs according to saved order
-  const buttons = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])"));
-  const map = new Map(buttons.map((btn) => [btn.dataset.tab, btn]));
-  order
-    .filter((key) => map.has(key))
-    .forEach((key) => {
-      tabNav.appendChild(map.get(key));
-      map.delete(key);
-    });
-  Array.from(map.values()).forEach((button) => tabNav.appendChild(button));
+  // Reorder tabs within each category body independently
+  document.querySelectorAll('.category-body').forEach(body => {
+    const buttons = Array.from(body.querySelectorAll('.tab-button'));
+    const map = new Map(buttons.map(btn => [btn.dataset.tab, btn]));
+    // Apply saved order for tabs that belong to this category
+    order
+      .filter(key => map.has(key))
+      .forEach(key => {
+        body.appendChild(map.get(key));
+        map.delete(key);
+      });
+    // Append any remaining tabs not in saved order
+    Array.from(map.values()).forEach(btn => body.appendChild(btn));
+  });
 }
 
 function setTabReorderState(enabled) {
@@ -1344,41 +1418,46 @@ function setTabReorderState(enabled) {
   // Remove any existing reorder arrows
   tabNav.querySelectorAll(".tab-reorder-arrows").forEach((el) => el.remove());
   if (!enabled) return;
-  const buttons = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])"));
-  buttons.forEach((button, i) => {
-    const arrows = document.createElement("span");
-    arrows.className = "tab-reorder-arrows";
-    const upBtn = document.createElement("button");
-    upBtn.className = "tab-reorder-btn";
-    upBtn.textContent = "▲";
-    upBtn.disabled = i === 0;
-    upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, -1); });
-    const downBtn = document.createElement("button");
-    downBtn.className = "tab-reorder-btn";
-    downBtn.textContent = "▼";
-    downBtn.disabled = i === buttons.length - 1;
-    downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, 1); });
-    arrows.appendChild(upBtn);
-    arrows.appendChild(downBtn);
-    button.appendChild(arrows);
+  // Scope reorder arrows within each category body
+  document.querySelectorAll('.category-body').forEach(body => {
+    const buttons = Array.from(body.querySelectorAll(".tab-button:not([data-pinned])"));
+    buttons.forEach((button, i) => {
+      const arrows = document.createElement("span");
+      arrows.className = "tab-reorder-arrows";
+      const upBtn = document.createElement("button");
+      upBtn.className = "tab-reorder-btn";
+      upBtn.textContent = "▲";
+      upBtn.disabled = i === 0;
+      upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, -1); });
+      const downBtn = document.createElement("button");
+      downBtn.className = "tab-reorder-btn";
+      downBtn.textContent = "▼";
+      downBtn.disabled = i === buttons.length - 1;
+      downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, 1); });
+      arrows.appendChild(upBtn);
+      arrows.appendChild(downBtn);
+      button.appendChild(arrows);
+    });
   });
 }
 
 async function moveTab(button, direction) {
-  const buttons = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])"));
+  const categoryBody = button.closest('.category-body');
+  if (!categoryBody) return;
+  const buttons = Array.from(categoryBody.querySelectorAll(".tab-button:not([data-pinned])"));
   const idx = buttons.indexOf(button);
   const targetIdx = idx + direction;
   if (targetIdx < 0 || targetIdx >= buttons.length) return;
   const target = buttons[targetIdx];
   if (direction === -1) {
-    tabNav.insertBefore(button, target);
+    categoryBody.insertBefore(button, target);
   } else {
-    tabNav.insertBefore(target, button);
+    categoryBody.insertBefore(target, button);
   }
   // Refresh arrows to update disabled states
   setTabReorderState(true);
-  // Save order
-  const order = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])")).map((btn) => btn.dataset.tab);
+  // Save order — collect from all category bodies
+  const order = Array.from(tabNav.querySelectorAll(".category-body .tab-button:not([data-pinned])")).map((btn) => btn.dataset.tab);
   const response = await invoke('set_tab_order', { order });
   if (!response.ok) {
     showToast(response.error || "更新排序失敗。");
@@ -1388,6 +1467,56 @@ async function moveTab(button, direction) {
 function updateTabOrderToggleLabel() {
   if (!tabOrderToggle) return;
   tabOrderToggle.textContent = tabOrderUnlocked ? "🔓 解鎖排序" : "🔒 鎖定排序";
+}
+
+// --- Sidebar category accordion ---
+function initCategoryAccordions() {
+  document.querySelectorAll('.category-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const cat = header.closest('.sidebar-category');
+      cat.classList.toggle('collapsed');
+      saveCategoryStates();
+    });
+  });
+  restoreCategoryStates();
+}
+
+function saveCategoryStates() {
+  const states = {};
+  document.querySelectorAll('.sidebar-category').forEach(cat => {
+    states[cat.dataset.category] = cat.classList.contains('collapsed');
+  });
+  try { localStorage.setItem('dij_category_states', JSON.stringify(states)); } catch {}
+}
+
+function restoreCategoryStates() {
+  try {
+    const states = JSON.parse(localStorage.getItem('dij_category_states') || '{}');
+    Object.entries(states).forEach(([key, collapsed]) => {
+      const cat = document.querySelector(`.sidebar-category[data-category="${key}"]`);
+      if (cat && collapsed) cat.classList.add('collapsed');
+    });
+  } catch {}
+}
+
+function updateCategoryVisibility() {
+  document.querySelectorAll('.sidebar-category').forEach(cat => {
+    const categoryName = cat.dataset.category;
+    const tabsInCategory = CATEGORY_TABS[categoryName] || [];
+    const allHidden = tabsInCategory.every(tabId => {
+      const btn = cat.querySelector(`.tab-button[data-tab="${tabId}"]`);
+      return !btn || btn.classList.contains('hidden');
+    });
+    cat.classList.toggle('category-hidden', allHidden);
+  });
+}
+
+function ensureCategoryExpanded(tabButton) {
+  const parentCat = tabButton.closest('.sidebar-category');
+  if (parentCat && parentCat.classList.contains('collapsed')) {
+    parentCat.classList.remove('collapsed');
+    saveCategoryStates();
+  }
 }
 
 function populateSelect(select, values, selectedValue = "") {
@@ -3075,6 +3204,8 @@ if (sidebarToggle && layout) {
     sidebarToggle.textContent = isCollapsed ? "▸" : "◂";
   });
 }
+// Initialize category accordion expand/collapse
+initCategoryAccordions();
 if (fabToggle && fabActions) {
   fabToggle.addEventListener("click", () => {
     const fab = fabToggle.closest(".fab");
@@ -3429,6 +3560,8 @@ document.querySelectorAll(".tab-button").forEach((button) => {
     }
     // Close tasks dropdown if open when switching to another tab
     closeTasksDropdown();
+    // Auto-expand parent category if collapsed
+    ensureCategoryExpanded(button);
     document.querySelectorAll(".tab-button").forEach((btn) => btn.classList.remove("active"));
     document.querySelectorAll(".tab-content").forEach((content) => content.classList.remove("active"));
     button.classList.add("active");
@@ -4495,6 +4628,68 @@ if (docxOpenFolderBtn) {
 }
 
 // ---------------------------------------------------------------------------
+// EPS Settings Config Handlers
+// ---------------------------------------------------------------------------
+const epsConfigSaveBtn = document.getElementById("epsConfigSaveBtn");
+if (epsConfigSaveBtn) {
+  epsConfigSaveBtn.addEventListener("click", async () => {
+    const delta = document.getElementById("epsConfigDelta")?.value || "20";
+    const mult = document.getElementById("epsConfigMultiplier")?.value || "1.5";
+    await invoke('set_eps_config', { key: "yearly_price_delta", value: delta });
+    await invoke('set_eps_config', { key: "intensive_multiplier", value: mult });
+    showToast("EPS 設定已儲存", "success");
+    // Invalidate EPS items cache so next tab visit reloads
+    epsState.loaded = false;
+    await loadState();
+  });
+}
+
+// EPS item add/delete handlers for eps_book, eps_other, eps_special
+document.querySelectorAll(".eps-item-form").forEach((form) => {
+  const addBtn = form.querySelector(".eps-item-add-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", async () => {
+      const itemType = form.dataset.epsType;
+      const nameInput = form.querySelector(".eps-item-name-input");
+      const priceInput = form.querySelector(".eps-item-price-input");
+      const name = (nameInput?.value || "").trim();
+      const price = parseFloat(priceInput?.value || "0");
+      if (!name) { showToast("請輸入名稱。"); return; }
+      const res = await invoke('set_eps_item', { itemType, name, price });
+      if (res && res.ok) {
+        showToast("項目已儲存", "success");
+        nameInput.value = "";
+        priceInput.value = "";
+        epsState.loaded = false;
+        await loadState();
+      } else {
+        showToast(res?.error || "儲存失敗", "error");
+      }
+    });
+  }
+});
+
+// Delete handler for EPS item lists
+["epsBookList", "epsOtherList", "epsSpecialList"].forEach((listId) => {
+  const typeMap = { epsBookList: "eps_book", epsOtherList: "eps_other", epsSpecialList: "eps_special" };
+  const el = document.getElementById(listId);
+  if (el) {
+    el.addEventListener("click", async (event) => {
+      const btn = event.target.closest("[data-eps-delete]");
+      if (!btn) return;
+      const name = btn.dataset.epsDelete;
+      if (!confirm(`確定刪除「${name}」？`)) return;
+      const res = await invoke('delete_eps_item', { itemType: typeMap[listId], name });
+      if (res && res.ok) {
+        showToast("項目已刪除", "success");
+        epsState.loaded = false;
+        await loadState();
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // EPS Audit Tab
 // ---------------------------------------------------------------------------
 const epsDatePicker = document.getElementById("epsDatePicker");
@@ -4522,12 +4717,16 @@ const epsExportBtn = document.getElementById("epsExportBtn");
 const epsOutputPath = document.getElementById("epsOutputPath");
 const epsSetPathBtn = document.getElementById("epsSetPathBtn");
 const epsHistoryList = document.getElementById("epsHistoryList");
+const epsYearMinus = document.getElementById("epsYearMinus");
+const epsYearPlus = document.getElementById("epsYearPlus");
+const epsYearDisplay = document.getElementById("epsYearDisplay");
 
 const epsDayNames = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"];
 
 const epsState = {
   items: [],
   records: { before: [], after: [] },
+  customRecords: { before: [], after: [] },
   audit: {
     operator_1_before: 0, operator_2_before: 0, operator_3_before: 0,
     operator_1_after: 0, operator_2_after: 0, operator_3_after: 0,
@@ -4535,6 +4734,7 @@ const epsState = {
   pastDayCarry: 0,
   currentDate: "",
   currentPeriod: "before",
+  year: new Date().getFullYear(),
   loaded: false,
 };
 
@@ -4560,17 +4760,28 @@ function epsSetDate(dateStr) {
   epsLoadRecord(dateStr);
 }
 
-async function epsInit() {
-  if (epsState.loaded) return;
+function epsUpdateYearDisplay() {
+  if (epsYearDisplay) epsYearDisplay.textContent = epsState.year;
+}
+
+async function epsReloadItems() {
   try {
-    const res = await invoke('load_eps_items');
+    const res = await invoke('load_eps_items', { year: epsState.year });
     if (res && res.ok) {
       epsState.items = res.items;
     }
   } catch (e) {
     console.error("Failed to load EPS items", e);
   }
+}
+
+async function epsInit() {
+  if (epsState.loaded || epsState._initializing) return;
+  epsState._initializing = true;
+  epsUpdateYearDisplay();
+  await epsReloadItems();
   epsState.loaded = true;
+  epsState._initializing = false;
   const savedPath = appState.app_config?.eps_output_path || "";
   if (epsOutputPath) epsOutputPath.value = savedPath;
   const today = epsFormatDate(new Date());
@@ -4579,9 +4790,10 @@ async function epsInit() {
 
 async function epsLoadRecord(dateStr) {
   try {
-    const res = await invoke('load_eps_record', { dateStr: dateStr });
+    const res = await invoke('load_eps_record', { dateStr: dateStr, year: epsState.year });
     if (res && res.ok) {
       epsState.records = res.records;
+      epsState.customRecords = res.custom_records || { before: [], after: [] };
       epsState.audit = res.audit;
       epsState.pastDayCarry = res.past_day_carry || 0;
       epsLoadOperatorInputs();
@@ -4589,6 +4801,7 @@ async function epsLoadRecord(dateStr) {
   } catch (e) {
     console.error("Failed to load EPS record", e);
     epsState.records = { before: [], after: [] };
+    epsState.customRecords = { before: [], after: [] };
     epsState.audit = {
       operator_1_before: 0, operator_2_before: 0, operator_3_before: 0,
       operator_1_after: 0, operator_2_after: 0, operator_3_after: 0,
@@ -4624,6 +4837,7 @@ function epsRenderItems() {
   const items = epsState.items;
   const period = epsState.currentPeriod;
   const periodData = epsState.records[period] || [];
+  const customData = epsState.customRecords[period] || [];
 
   let html = `<table class="eps-table"><thead><tr>
     <th>項目</th><th>單價</th>
@@ -4631,6 +4845,7 @@ function epsRenderItems() {
   </tr></thead><tbody>`;
 
   let currentSection = null;
+  let customSlotIdx = 0;
   const sectionLabels = { class: "班別", book: "書", other: "其他" };
 
   items.forEach((item, idx) => {
@@ -4638,6 +4853,31 @@ function epsRenderItems() {
       currentSection = item.section;
       html += `<tr class="eps-section-header"><td colspan="6">${sectionLabels[currentSection] || currentSection}</td></tr>`;
     }
+
+    if (item.is_custom_slot) {
+      // Render editable custom row
+      const cr = customData[customSlotIdx] || { item_name: "", item_price: 0, qty_K: 0, qty_L: 0, qty_HK: 0 };
+      const cName = cr.item_name || "";
+      const cPrice = cr.item_price || 0;
+      const cqk = cr.qty_K || 0;
+      const cql = cr.qty_L || 0;
+      const cqh = cr.qty_HK || 0;
+      const cSub = cPrice * (cqk + cql + cqh);
+      const csIdx = customSlotIdx;
+      const csSection = item.section + "_custom";
+
+      html += `<tr class="eps-custom-row">
+        <td><input type="text" class="eps-custom-name" data-cidx="${csIdx}" data-csection="${csSection}" placeholder="自訂項目" value="${cName}" /></td>
+        <td><input type="number" class="eps-custom-price" data-cidx="${csIdx}" min="0" value="${cPrice}" /></td>
+        <td><input type="number" class="eps-custom-qty" data-cidx="${csIdx}" data-loc="K" min="0" value="${cqk}" /></td>
+        <td><input type="number" class="eps-custom-qty" data-cidx="${csIdx}" data-loc="L" min="0" value="${cql}" /></td>
+        <td><input type="number" class="eps-custom-qty" data-cidx="${csIdx}" data-loc="HK" min="0" value="${cqh}" /></td>
+        <td class="eps-subtotal eps-custom-subtotal" data-cidx="${csIdx}">$${cSub.toLocaleString()}</td>
+      </tr>`;
+      customSlotIdx++;
+      return;
+    }
+
     const rec = periodData[idx] || { qty_K: 0, qty_L: 0, qty_HK: 0 };
     const qk = rec.qty_K || 0;
     const ql = rec.qty_L || 0;
@@ -4657,9 +4897,14 @@ function epsRenderItems() {
   html += `</tbody></table>`;
   epsItemsTable.innerHTML = html;
 
-  // Attach input listeners
+  // Attach input listeners for regular items
   epsItemsTable.querySelectorAll(".eps-qty").forEach((input) => {
     input.addEventListener("input", epsOnQtyChange);
+  });
+
+  // Attach input listeners for custom rows
+  epsItemsTable.querySelectorAll(".eps-custom-name, .eps-custom-price, .eps-custom-qty").forEach((input) => {
+    input.addEventListener("input", epsOnCustomChange);
   });
 }
 
@@ -4686,6 +4931,32 @@ function epsOnQtyChange(e) {
   epsComputeTotals();
 }
 
+function epsOnCustomChange(e) {
+  const cidx = parseInt(e.target.dataset.cidx);
+  const period = epsState.currentPeriod;
+  if (!epsState.customRecords[period]) epsState.customRecords[period] = [];
+  if (!epsState.customRecords[period][cidx]) {
+    epsState.customRecords[period][cidx] = { item_name: "", item_price: 0, item_section: e.target.dataset.csection || "class_custom", qty_K: 0, qty_L: 0, qty_HK: 0 };
+  }
+  const cr = epsState.customRecords[period][cidx];
+
+  if (e.target.classList.contains("eps-custom-name")) {
+    cr.item_name = e.target.value;
+    cr.item_section = e.target.dataset.csection || cr.item_section;
+  } else if (e.target.classList.contains("eps-custom-price")) {
+    cr.item_price = Math.max(0, parseInt(e.target.value) || 0);
+  } else if (e.target.classList.contains("eps-custom-qty")) {
+    cr[`qty_${e.target.dataset.loc}`] = Math.max(0, parseInt(e.target.value) || 0);
+  }
+
+  // Update custom subtotal
+  const sub = (cr.item_price || 0) * ((cr.qty_K || 0) + (cr.qty_L || 0) + (cr.qty_HK || 0));
+  const cell = epsItemsTable.querySelector(`.eps-custom-subtotal[data-cidx="${cidx}"]`);
+  if (cell) cell.textContent = `$${sub.toLocaleString()}`;
+
+  epsComputeTotals();
+}
+
 function epsComputeTotals() {
   const items = epsState.items;
   let beforeTotal = 0, afterTotal = 0;
@@ -4695,6 +4966,7 @@ function epsComputeTotals() {
   for (const period of ["before", "after"]) {
     const data = epsState.records[period] || [];
     items.forEach((item, idx) => {
+      if (item.is_custom_slot) return;
       const rec = data[idx] || { qty_K: 0, qty_L: 0, qty_HK: 0 };
       const sub = item.price * ((rec.qty_K || 0) + (rec.qty_L || 0) + (rec.qty_HK || 0));
       if (period === "before") {
@@ -4703,6 +4975,22 @@ function epsComputeTotals() {
       } else {
         afterTotal += sub;
         sectionAfter[item.section] = (sectionAfter[item.section] || 0) + sub;
+      }
+    });
+
+    // Include custom rows in totals
+    const customData = epsState.customRecords[period] || [];
+    customData.forEach((cr) => {
+      if (!cr) return;
+      const price = cr.item_price || 0;
+      const sub = price * ((cr.qty_K || 0) + (cr.qty_L || 0) + (cr.qty_HK || 0));
+      const baseSection = (cr.item_section || "class_custom").replace("_custom", "");
+      if (period === "before") {
+        beforeTotal += sub;
+        sectionBefore[baseSection] = (sectionBefore[baseSection] || 0) + sub;
+      } else {
+        afterTotal += sub;
+        sectionAfter[baseSection] = (sectionAfter[baseSection] || 0) + sub;
       }
     });
   }
@@ -4854,6 +5142,26 @@ if (epsPeriodAfter) {
   });
 }
 
+// Year navigation
+if (epsYearMinus) {
+  epsYearMinus.addEventListener("click", async () => {
+    epsState.year--;
+    epsUpdateYearDisplay();
+    await epsReloadItems();
+    epsRenderItems();
+    epsComputeTotals();
+  });
+}
+if (epsYearPlus) {
+  epsYearPlus.addEventListener("click", async () => {
+    epsState.year++;
+    epsUpdateYearDisplay();
+    await epsReloadItems();
+    epsRenderItems();
+    epsComputeTotals();
+  });
+}
+
 // Date navigation
 if (epsDatePicker) {
   epsDatePicker.addEventListener("change", () => {
@@ -4900,7 +5208,7 @@ if (epsSaveBtn) {
       operator_3_after: epsState.audit.operator_3_after || 0,
     };
     try {
-      const res = await invoke('save_eps_record', { dateStr: dateStr, records: epsState.records, audit });
+      const res = await invoke('save_eps_record', { dateStr: dateStr, year: epsState.year, records: epsState.records, audit, customRecords: epsState.customRecords });
       if (res && res.ok) {
         const msg = res.status === "OK"
           ? `已儲存 (${dateStr}) — OK`
@@ -4923,7 +5231,7 @@ if (epsExportBtn) {
     const dateStr = epsState.currentDate;
     if (!dateStr) return;
     try {
-      const res = await invoke('export_eps_csv', { dateStr: dateStr });
+      const res = await invoke('export_eps_csv', { dateStr: dateStr, year: epsState.year });
       if (res && res.ok) {
         const blob = new Blob([res.content], { type: "text/html;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -4992,7 +5300,9 @@ async function epsLoadHistory() {
 }
 
 // Init EPS tab when it becomes active
+let epsObserverPaused = false;
 const epsTabObserver = new MutationObserver(() => {
+  if (epsObserverPaused) return;
   const epsTab = document.querySelector('[data-tab-content="eps-audit"]');
   if (epsTab && epsTab.classList.contains("active")) {
     epsInit();

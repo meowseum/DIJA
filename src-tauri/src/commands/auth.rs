@@ -90,6 +90,28 @@ pub fn setup_admin(
 }
 
 // ---------------------------------------------------------------------------
+// list_login_users — no auth required, returns active usernames for dropdown
+// ---------------------------------------------------------------------------
+#[tauri::command]
+pub fn list_login_users(auth_db: tauri::State<'_, AuthDb>) -> Value {
+    let conn = auth_db.lock().unwrap();
+    let mut stmt = conn
+        .prepare("SELECT username, display_name FROM users WHERE active = 1 ORDER BY display_name ASC")
+        .unwrap();
+    let users: Vec<Value> = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "username": r.get::<_, String>(0)?,
+                "display_name": r.get::<_, String>(1)?,
+            }))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+    json!({ "ok": true, "users": users })
+}
+
+// ---------------------------------------------------------------------------
 // login
 // ---------------------------------------------------------------------------
 #[tauri::command]

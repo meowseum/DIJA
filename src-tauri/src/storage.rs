@@ -221,10 +221,23 @@ pub struct Settings {
     pub level_textbook: HashMap<String, Vec<String>>,
     pub textbook_stock: HashMap<String, i64>,
     pub level_next: HashMap<String, String>,
+    pub eps_config: HashMap<String, String>,
+    pub eps_book: Vec<(String, i64)>,
+    pub eps_other: Vec<(String, i64)>,
+    pub eps_special: Vec<(String, i64)>,
 }
 
 impl Settings {
     pub fn to_json(&self) -> serde_json::Value {
+        let eps_book_json: Vec<serde_json::Value> = self.eps_book.iter()
+            .map(|(n, p)| serde_json::json!({"name": n, "price": p}))
+            .collect();
+        let eps_other_json: Vec<serde_json::Value> = self.eps_other.iter()
+            .map(|(n, p)| serde_json::json!({"name": n, "price": p}))
+            .collect();
+        let eps_special_json: Vec<serde_json::Value> = self.eps_special.iter()
+            .map(|(n, p)| serde_json::json!({"name": n, "price": p}))
+            .collect();
         serde_json::json!({
             "teacher": self.teacher,
             "room": self.room,
@@ -236,6 +249,10 @@ impl Settings {
             "level_textbook": self.level_textbook,
             "textbook_stock": self.textbook_stock,
             "level_next": self.level_next,
+            "eps_config": self.eps_config,
+            "eps_book": eps_book_json,
+            "eps_other": eps_other_json,
+            "eps_special": eps_special_json,
         })
     }
 
@@ -315,6 +332,42 @@ pub fn load_settings() -> Settings {
                     }
                 }
             }
+            "eps_config" => {
+                if let Some((k, v)) = value.split_once('|') {
+                    let k = k.trim().to_string();
+                    let v = v.trim().to_string();
+                    if !k.is_empty() {
+                        settings.eps_config.insert(k, v);
+                    }
+                }
+            }
+            "eps_book" => {
+                if let Some((name, price_str)) = value.split_once('|') {
+                    let name = name.trim().to_string();
+                    let price = price_str.trim().parse::<f64>().map(|p| (p as i64).max(0)).unwrap_or(0);
+                    if !name.is_empty() {
+                        settings.eps_book.push((name, price));
+                    }
+                }
+            }
+            "eps_other" => {
+                if let Some((name, price_str)) = value.split_once('|') {
+                    let name = name.trim().to_string();
+                    let price = price_str.trim().parse::<f64>().map(|p| (p as i64).max(0)).unwrap_or(0);
+                    if !name.is_empty() {
+                        settings.eps_other.push((name, price));
+                    }
+                }
+            }
+            "eps_special" => {
+                if let Some((name, price_str)) = value.split_once('|') {
+                    let name = name.trim().to_string();
+                    let price = price_str.trim().parse::<f64>().map(|p| (p as i64).max(0)).unwrap_or(0);
+                    if !name.is_empty() {
+                        settings.eps_special.push((name, price));
+                    }
+                }
+            }
             "teacher" | "room" | "level" | "time" => {
                 if !value.is_empty() {
                     if let Some(list) = settings.list_mut(entry_type) {
@@ -387,6 +440,30 @@ pub fn save_settings(settings: &Settings) {
         let mut row = HashMap::new();
         row.insert("type".to_string(), "textbook_stock".to_string());
         row.insert("value".to_string(), format!("{}|{}", name, count));
+        rows.push(row);
+    }
+    for (k, v) in &settings.eps_config {
+        let mut row = HashMap::new();
+        row.insert("type".to_string(), "eps_config".to_string());
+        row.insert("value".to_string(), format!("{}|{}", k, v));
+        rows.push(row);
+    }
+    for (name, price) in &settings.eps_book {
+        let mut row = HashMap::new();
+        row.insert("type".to_string(), "eps_book".to_string());
+        row.insert("value".to_string(), format!("{}|{}", name, price));
+        rows.push(row);
+    }
+    for (name, price) in &settings.eps_other {
+        let mut row = HashMap::new();
+        row.insert("type".to_string(), "eps_other".to_string());
+        row.insert("value".to_string(), format!("{}|{}", name, price));
+        rows.push(row);
+    }
+    for (name, price) in &settings.eps_special {
+        let mut row = HashMap::new();
+        row.insert("type".to_string(), "eps_special".to_string());
+        row.insert("value".to_string(), format!("{}|{}", name, price));
         rows.push(row);
     }
 

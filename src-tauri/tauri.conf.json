@@ -38,6 +38,8 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "resources": {}
+    "resources": [
+      "EPS  Blank 2026.csv"
+    ]
   }
 }

@@ -51,8 +51,8 @@ pub const ALL_PERMISSIONS: &[(&str, &str, &str)] = &[
 
 /// Check whether a role has a specific permission.
 pub fn role_has_permission(conn: &Connection, role: &str, permission: &str) -> bool {
-    // Admin always has all permissions (hardcoded safety net)
-    if role == "admin" {
+    // Dev and admin always have all permissions (hardcoded safety net)
+    if role == "admin" || role == "dev" {
         return true;
     }
     let count: i64 = conn
@@ -67,8 +67,8 @@ pub fn role_has_permission(conn: &Connection, role: &str, permission: &str) -> b
 
 /// Get all permissions for a role.
 pub fn get_role_permissions(conn: &Connection, role: &str) -> Vec<String> {
-    // Admin always has everything
-    if role == "admin" {
+    // Dev and admin always have everything
+    if role == "admin" || role == "dev" {
         return ALL_PERMISSIONS.iter().map(|(k, _, _)| k.to_string()).collect();
     }
     let mut stmt = conn

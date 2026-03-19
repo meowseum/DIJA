@@ -61,6 +61,7 @@ body {
   gap: 12px;
   position: sticky;
   top: 24px;
+  height: calc(100vh - 48px);
   overflow: hidden;
   transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -434,9 +435,109 @@ body {
 
 .sidebar-tabs {
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   margin-bottom: 0;
   padding: 0 4px;
+  flex: 1 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.sidebar-tabs::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-tabs::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.sidebar-tabs::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* ── Sidebar category accordion ── */
+.sidebar-category {
+  margin-bottom: 2px;
+}
+
+.category-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.category-header:hover {
+  color: var(--text);
+  background: rgba(189, 147, 249, 0.05);
+}
+
+.category-arrow {
+  width: 12px;
+  flex-shrink: 0;
+  font-size: 10px;
+  transition: transform 200ms ease;
+  display: inline-block;
+}
+
+.sidebar-category.collapsed .category-arrow {
+  transform: rotate(-90deg);
+}
+
+.category-label {
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 1;
+  max-width: 160px;
+  transition: max-width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 180ms ease;
+}
+
+.category-icon {
+  display: none;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.category-body {
+  overflow: hidden;
+  max-height: 500px;
+  opacity: 1;
+  transition: max-height 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 180ms ease;
+}
+
+.sidebar-category.collapsed .category-body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-category.category-hidden {
+  display: none;
 }
 
 .tab-divider {
@@ -611,6 +712,32 @@ body {
 
 .layout.sidebar-collapsed .sidebar-tabs .tab-button.active::before {
   display: none;
+}
+
+/* Collapsed sidebar: category overrides */
+.layout.sidebar-collapsed .category-label {
+  max-width: 0;
+  opacity: 0;
+}
+
+.layout.sidebar-collapsed .category-icon {
+  display: inline-flex;
+}
+
+.layout.sidebar-collapsed .category-arrow {
+  display: none;
+}
+
+.layout.sidebar-collapsed .category-header {
+  justify-content: center;
+  padding: 6px 8px;
+}
+
+/* When sidebar collapsed, force all category bodies open so tab icons stay accessible */
+.layout.sidebar-collapsed .category-body {
+  max-height: 500px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 .layout.sidebar-collapsed .tab-order-toggle {
@@ -2105,6 +2232,41 @@ input.eps-qty:focus {
   outline: none;
 }
 
+/* Custom row inputs */
+.eps-custom-row td {
+  background: var(--panel-light);
+}
+
+input.eps-custom-name {
+  width: 100%;
+  padding: 2px 4px;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+input.eps-custom-price,
+input.eps-custom-qty {
+  width: 56px;
+  padding: 2px 4px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+input.eps-custom-name:focus,
+input.eps-custom-price:focus,
+input.eps-custom-qty:focus {
+  border-color: var(--accent);
+  border-style: solid;
+  outline: none;
+}
+
 /* Period toggle active state */
 #epsPeriodBefore.active,
 #epsPeriodAfter.active {
@@ -2206,9 +2368,19 @@ input.eps-qty:focus {
   color: var(--text);
   font-size: 14px;
 }
-.login-label input:focus {
+.login-label input:focus,
+.login-label select:focus {
   outline: none;
   border-color: var(--accent);
+}
+.login-label select {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
 }
 .login-btn {
   margin-top: 8px;
