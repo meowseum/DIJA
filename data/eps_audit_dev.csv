@@ -1,3 +1,0 @@
-date,operator_1_before,operator_2_before,operator_3_before,operator_1_after,operator_2_after,operator_3_after,operators_sum_before,operators_sum_after,sheet_before,sheet_after,past_day_carry,calculated_total,status,status_after,status_audit
-2026-03-11,2520,1900,0,0,0,0,4420,0,4420,0,0,4420,OK,,
-2026-03-17,0,0,0,0,0,0,0,0,1270,1260,0,0,MISMATCH,MISMATCH,MISMATCH
