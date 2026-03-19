@@ -1,0 +1,8 @@
+2026-02-26 09:28:32,402 INFO Class updated: 080f97cd-3cc8-4d06-8a34-0377529afed6 fields=['classroom', 'teacher', 'start_time', 'relay_teacher', 'relay_date', 'student_count']
+2026-02-26 09:28:45,393 INFO Class updated: bf61ad4c-7592-46b3-a8c0-b9859c912bf8 fields=['classroom', 'teacher', 'start_time', 'relay_teacher', 'relay_date', 'student_count']
+2026-02-26 14:56:32,701 INFO Class created: 初級K10A26 (id=c773926a-8afd-46fc-96b7-dcb419486637)
+2026-02-26 14:56:50,126 INFO Class deleted: c773926a-8afd-46fc-96b7-dcb419486637
+2026-03-11 20:48:23,069 INFO EPS record saved for 2026-03-11: status=OK
+2026-03-11 21:58:43,624 INFO EPS record saved for 2026-03-11: status=OK
+2026-03-18 21:04:22,503 INFO EPS record saved for 2026-03-17: status=MISMATCH status_after=OK status_audit=MISMATCH
+2026-03-18 21:04:39,253 INFO EPS record saved for 2026-03-17: status=MISMATCH status_after=MISMATCH status_audit=MISMATCH

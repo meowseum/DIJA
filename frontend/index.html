@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DIJ前線助手</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="locationBanner" class="location-banner"></div>
+    <div class="app layout">
+      <aside class="sidebar">
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="切換側邊欄">◂</button>
+        <div class="location-switcher">
+          <span class="location-switcher-label">地點</span>
+          <div class="location-segments" id="locationSegments">
+            <button type="button" class="loc-seg" data-value="K">旺角</button>
+            <button type="button" class="loc-seg" data-value="L">太子</button>
+            <button type="button" class="loc-seg" data-value="H">香港</button>
+          </div>
+        </div>
+        <span class="location-badge" id="locationBadge"></span>
+        <select id="locationSelect" class="hidden">
+          <option value="">請選擇</option>
+          <option value="K">旺角</option>
+          <option value="L">太子</option>
+          <option value="H">香港</option>
+        </select>
+        <nav class="tabs sidebar-tabs">
+          <button class="tab-button active" data-tab="classes" title="班別">
+            <span class="tab-label">班別</span>
+            <span class="tab-icon">班</span>
+          </button>
+          <button class="tab-button" data-tab="reminders" title="門牌/問卷">
+            <span class="tab-label">門牌/問卷</span>
+            <span class="tab-icon">問</span>
+          </button>
+          <button class="tab-button" data-tab="settings" title="資料設定">
+            <span class="tab-label">資料設定</span>
+            <span class="tab-icon">設</span>
+          </button>
+          <button class="tab-button" data-tab="fee-guide" title="學費指引">
+            <span class="tab-label">學費指引</span>
+            <span class="tab-icon">費</span>
+          </button>
+          <button class="tab-button" data-tab="docx-output" title="文件輸出">
+            <span class="tab-label">文件輸出</span>
+            <span class="tab-icon">印</span>
+          </button>
+          <button class="tab-button" data-tab="messages" title="常用訊息">
+            <span class="tab-label">常用訊息</span>
+            <span class="tab-icon">訊</span>
+          </button>
+          <button class="tab-button" data-tab="makeup-plan" title="補課安排">
+            <span class="tab-label">補課安排</span>
+            <span class="tab-icon">補</span>
+          </button>
+          <button class="tab-button" data-tab="promote-notice" title="升班通知">
+            <span class="tab-label">升班通知</span>
+            <span class="tab-icon">升</span>
+          </button>
+          <button class="tab-button" data-tab="stock" title="存貨">
+            <span class="tab-label">存貨</span>
+            <span class="tab-icon">存</span>
+          </button>
+          <button class="tab-button" data-tab="eps-audit" title="EPS 記錄">
+            <span class="tab-label">EPS 記錄</span>
+            <span class="tab-icon">E</span>
+          </button>
+          <button class="tab-button tab-pinned" data-tab="tasks" data-pinned="true" title="待辦事項">
+            <span class="tab-label">待辦事項</span>
+            <span class="tab-icon">事</span>
+          </button>
+          <div class="tab-divider"></div>
+        </nav>
+        <button id="tabOrderToggle" class="tab-order-toggle" type="button">🔒 鎖定排序</button>
+      </aside>
+
+      <main class="content">
+        <section class="tab-content active" data-tab-content="classes">
+        <section class="card calendar-card">
+          <div class="card-header">
+            <h2>行事曆</h2>
+            <div class="filters">
+              <button id="calendarMonthBtn" class="btn secondary" type="button">月</button>
+              <button id="calendarWeekBtn" class="btn secondary" type="button">週</button>
+            </div>
+          </div>
+          <div id="calendarToolbar" class="filters">
+            <button id="calendarPrevBtn" class="btn secondary" type="button">上一頁</button>
+            <div id="calendarLabel" class="pill"></div>
+            <select id="calendarJumpMonth" class="calendar-jump hidden">
+              <option value="1">1月</option>
+              <option value="2">2月</option>
+              <option value="3">3月</option>
+              <option value="4">4月</option>
+              <option value="5">5月</option>
+              <option value="6">6月</option>
+              <option value="7">7月</option>
+              <option value="8">8月</option>
+              <option value="9">9月</option>
+              <option value="10">10月</option>
+              <option value="11">11月</option>
+              <option value="12">12月</option>
+            </select>
+            <select id="calendarJumpYear" class="calendar-jump hidden"></select>
+            <button id="calendarNextBtn" class="btn secondary" type="button">下一頁</button>
+            <button id="calendarTodayBtn" class="btn secondary" type="button">今天</button>
+          </div>
+          <div class="calendar-legend">
+            <span class="legend-item"><span class="new-class">新班</span></span>
+            <span class="legend-item"><span class="ending-soon">即將完結</span></span>
+          </div>
+          <div id="calendarView" class="calendar"></div>
+        </section>
+
+        <section class="grid">
+          <div class="card card-collapsible collapsed">
+            <div class="card-header">
+              <h2>新增班別</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form id="classForm" class="form">
+              <label>
+                班別
+                <input type="text" name="sku" placeholder="10A26" required />
+                <span class="sku-hint">格式：[等級][地點][月][字][年] 例如：初K2A26</span>
+              </label>
+              <label>
+                等級
+                <select name="level" id="levelSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                課室
+                <select name="classroom" id="roomSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                開課日期
+                <input type="date" name="start_date" required />
+              </label>
+              <label>
+                上課日
+                <select name="weekday">
+                  <option value="0">星期一</option>
+                  <option value="1">星期二</option>
+                  <option value="2">星期三</option>
+                  <option value="3">星期四</option>
+                  <option value="4">星期五</option>
+                  <option value="5">星期六</option>
+                  <option value="6">星期日</option>
+                </select>
+              </label>
+              <label>
+                上課時間
+                <select name="start_time" id="timeSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                導師
+                <select name="teacher" id="teacherSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <div id="relayFields" class="relay-fields hidden">
+                <label>
+                  接力老師
+                  <select name="relay_teacher" id="relayTeacherSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label>
+                  接力時間
+                  <input type="date" name="relay_date" />
+                </label>
+              </div>
+              <label>
+                學生人數
+                <input type="number" name="student_count" min="0" value="0" />
+              </label>
+              <label>
+                總課節
+                <input type="number" name="lesson_total" min="1" value="48" />
+              </label>
+              <button class="btn primary" type="submit">新增班別</button>
+            </form>
+          </div>
+
+          <div class="card card-collapsible collapsed">
+            <div class="card-header">
+              <h2>假期</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form id="holidayForm" class="form">
+              <label>
+                開始日期
+                <input type="date" id="holidayStartDate" name="start_date" required />
+              </label>
+              <div class="field-inline">
+                <label>
+                  結束日期
+                  <input type="date" id="holidayEndDate" name="end_date" required />
+                </label>
+                <label class="checkbox-inline">
+                  <input type="checkbox" id="holidayOneDay" />
+                  一日
+                </label>
+              </div>
+              <label>
+                名稱
+                <input type="text" name="name" placeholder="中期假" />
+              </label>
+              <button class="btn primary" type="submit">新增假期</button>
+            </form>
+            <div id="holidayList" class="list"></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <h2>班別列表</h2>
+            <div class="filters">
+              <input id="searchInput" type="text" placeholder="搜尋班別、導師、課室..." />
+              <select id="statusFilter">
+                <option value="">全部狀態</option>
+                <option value="not_started">未開始</option>
+                <option value="active">進行中</option>
+                <option value="promoted">已升級</option>
+                <option value="merged">已合併</option>
+                <option value="terminated">已結束</option>
+              </select>
+              <select id="weekdayFilter">
+                <option value="">全部上課日</option>
+                <option value="0">星期一</option>
+                <option value="1">星期二</option>
+                <option value="2">星期三</option>
+                <option value="3">星期四</option>
+                <option value="4">星期五</option>
+                <option value="5">星期六</option>
+                <option value="6">星期日</option>
+              </select>
+              <select id="locationFilter">
+                <option value="">全部地點</option>
+              </select>
+              <select id="levelFilter">
+                <option value="">全部等級</option>
+              </select>
+              <select id="archiveFilter">
+                <option value="active">現有班別</option>
+                <option value="archived">已封存</option>
+                <option value="all">全部</option>
+              </select>
+              <select id="issueFilter">
+                <option value="">全部問題</option>
+                <option value="incomplete">缺資料</option>
+                <option value="conflict">課室衝突</option>
+                <option value="duplicate">班別重複</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table id="classTable">
+              <thead>
+                <tr>
+                  <th>班別</th>
+                  <th>課室</th>
+                  <th>開課</th>
+                  <th>上課日</th>
+                  <th>時間</th>
+                  <th>導師</th>
+                  <th>人數</th>
+                  <th>總節數</th>
+                  <th>已上</th>
+                  <th>剩餘</th>
+                  <th>完結日期</th>
+                  <th>狀態</th>
+                  <th>問題</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="classBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+        <section class="tab-content" data-tab-content="reminders">
+        <section class="card">
+          <div class="card-header">
+            <h2>門牌 / 問卷 / 介紹</h2>
+            <div class="filters">
+              <div class="reminder-legend">
+                <span class="reminder red">≤2週 / 已過期</span>
+                <span class="reminder yellow">≤3週</span>
+                <span class="reminder gray">已完成</span>
+              </div>
+              <select id="reminderSort">
+                <option value="level" selected>等級</option>
+                <option value="start_date">開課日期</option>
+                <option value="sku">班別</option>
+                <option value="classroom">課室</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrapper">
+            <table id="reminderTable">
+              <thead>
+                <tr>
+                  <th>班別</th>
+                  <th>課室</th>
+                  <th>接力老師</th>
+                  <th>開課</th>
+                  <th>上課日</th>
+                  <th>時間</th>
+                  <th>接力時間</th>
+                  <th>門牌</th>
+                  <th>問卷</th>
+                  <th>介紹</th>
+                </tr>
+              </thead>
+              <tbody id="reminderBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+        <section class="tab-content" data-tab-content="settings">
+        <section class="settings-group">
+          <div class="settings-group-header">
+            <h2>班別與人員</h2>
+          </div>
+          <div class="grid">
+          <div class="card card-collapsible collapsed" data-collapsible="teacher">
+            <div class="card-header">
+              <h2>導師</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form class="form settings-form" data-setting-type="teacher">
+              <label>
+                新增導師
+                <input type="text" name="value" placeholder="陳老師" />
+              </label>
+              <button class="btn primary" type="submit">新增</button>
+            </form>
+            <label class="filter-label">
+              篩選
+              <select id="teacherGenderFilter">
+                <option value="">全部</option>
+                <option value="male">先生</option>
+                <option value="female">小姐</option>
+              </select>
+            </label>
+            <div class="list" id="teacherList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="room">
+            <div class="card-header">
+              <h2>課室</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form class="form settings-form" data-setting-type="room">
+              <label>
+                新增課室
+                <input type="text" name="value" placeholder="2A" />
+              </label>
+              <button class="btn primary" type="submit">新增</button>
+            </form>
+            <div class="list" id="roomList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="level">
+            <div class="card-header">
+              <h2>等級</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form class="form settings-form" data-setting-type="level">
+              <label>
+                新增等級
+                <input type="text" name="value" placeholder="初級" />
+              </label>
+              <button class="btn primary" type="submit">新增</button>
+            </form>
+            <div class="list" id="levelList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="time">
+            <div class="card-header">
+              <h2>時間</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form class="form settings-form" data-setting-type="time">
+              <label>
+                新增時間
+                <input type="text" name="value" placeholder="10:00" />
+              </label>
+              <button class="btn primary" type="submit">新增</button>
+            </form>
+            <div class="list" id="timeList"></div>
+          </div>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <div class="settings-group-header">
+            <h2>學費與匯入</h2>
+          </div>
+          <div class="grid">
+
+          <div class="card card-collapsible collapsed" data-collapsible="price">
+            <div class="card-header">
+              <h2>班別學費</h2>
+              <div class="action-group">
+                <button id="priceAdjustMinus" class="btn secondary" type="button">－20</button>
+                <button id="priceAdjustPlus" class="btn secondary" type="button">＋20</button>
+                <button class="btn secondary collapse-toggle" type="button">展開</button>
+              </div>
+            </div>
+            <form id="priceForm" class="form">
+              <label>
+                等級
+                <select id="priceLevelSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                學費
+                <input type="number" id="priceValueInput" min="0" placeholder="630" />
+              </label>
+              <button class="btn primary" type="submit">設定學費</button>
+            </form>
+            <div class="list" id="priceList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="export">
+            <div class="card-header">
+              <h2>匯入 / 匯出</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form">
+              <button id="exportSettingsBtn" class="btn secondary" type="button">匯出設定</button>
+              <label>
+                匯入設定
+                <input id="importSettingsInput" type="file" accept=".csv" />
+              </label>
+            </div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="class-data">
+            <div class="card-header">
+              <h2>班別資料</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div class="form">
+              <button id="exportClassesBtn" class="btn secondary" type="button">匯出班別</button>
+              <label>
+                匯入班別
+                <input id="importClassesInput" type="file" accept=".csv" />
+              </label>
+            </div>
+          </div>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <div class="settings-group-header">
+            <h2>教材管理</h2>
+          </div>
+          <div class="grid">
+
+          <div class="card card-collapsible collapsed" data-collapsible="textbook-list">
+            <div class="card-header">
+              <h2>教材清單</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <form id="textbookForm" class="form">
+              <label>
+                教材名稱
+                <input type="text" id="textbookNameInput" placeholder="初級課本" />
+              </label>
+              <label>
+                價格 ($)
+                <input type="number" id="textbookPriceInput" min="0" placeholder="180" />
+              </label>
+              <button class="btn primary" type="submit">新增 / 更新</button>
+            </form>
+            <div class="list" id="textbookList"></div>
+          </div>
+
+          <div class="card card-collapsible collapsed" data-collapsible="level-textbook">
+            <div class="card-header">
+              <h2>等級對應</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <p class="muted-hint">為每個等級設定所用教材及下一等級，以便自動計算書簿費及升班預測。</p>
+            <div id="levelTextbookList"></div>
+          </div>
+
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="fee-guide">
+        <section class="grid fee-guide-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>輸入資料</h2>
+              <button id="feeResetBtn" class="btn secondary" type="button">重設</button>
+            </div>
+            <form id="feeGuideForm" class="form">
+              <div class="field-inline">
+                <label>
+                  等級
+                  <select id="feeLevelSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label>
+                  地點
+                  <select id="feeLocationSelect">
+                    <option value="">請選擇</option>
+                    <option value="K">旺角</option>
+                    <option value="L">太子</option>
+                    <option value="H">香港</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field-inline">
+                <label>
+                  月份
+                  <select id="feeMonthSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label>
+                  班別
+                  <select id="feeLetterSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label>
+                  年份
+                  <select id="feeYearSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                上課時間
+                <input type="text" id="feeClassTimeInput" placeholder="1900 - 2130" />
+              </label>
+              <label>
+                開課日期
+                <input type="date" id="feeStartDateInput" />
+              </label>
+              <label>
+                截止日期
+                <input type="date" id="feeDeadlineInput" />
+              </label>
+              <label>
+                <span id="feeTextbookLabel">書簿費</span>
+                <input type="number" id="feeTextbookInput" min="0" value="0" />
+              </label>
+              <div class="field-inline">
+                <label class="checkbox-inline">
+                  <input type="checkbox" id="feeIdCardInput" />
+                  ID 卡
+                </label>
+                <div class="action-group">
+                  <button id="feeTutorMinus" class="btn secondary" type="button">－20</button>
+                  <button id="feeTutorPlus" class="btn secondary" type="button">＋20</button>
+                </div>
+              </div>
+            </form>
+            <div class="fee-summary">
+              <div>班別學費: <span id="feeClassPriceLabel">$0</span></div>
+              <div>合共: <span id="feeTotalLabel">$0</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>WhatsApp 模板</h2>
+              <button id="feeCopyBtn" class="btn secondary" type="button">複製</button>
+            </div>
+            <textarea id="feeTemplateOutput" class="template-output" readonly></textarea>
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="docx-output">
+        <section class="grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>模板輸出</h2>
+            </div>
+            <form id="docxForm" class="form">
+              <label>
+                模板
+                <select id="docxTemplateSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                班別
+                <select id="docxClassSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <div id="docxPreview" class="docx-preview">
+                <div><span class="pill">班別</span> <span data-field="sku">-</span></div>
+                <div><span class="pill">上課日</span> <span data-field="weekday">-</span></div>
+                <div><span class="pill">時間</span> <span data-field="time">-</span></div>
+                <div><span class="pill">導師</span> <span data-field="teacher">-</span></div>
+                <div><span class="pill">課室</span> <span data-field="room">-</span></div>
+              </div>
+              <details id="docxAdvancedOptions" class="docx-advanced">
+                <summary>進階選項</summary>
+                <label id="docxRelayRowPrimary" class="checkbox-inline hidden">
+                  <input type="checkbox" id="docxRelayTeacherPrimary" />
+                  使用接力老師 (主)
+                </label>
+                <label id="docxSecondClassToggleRow" class="checkbox-inline hidden">
+                  <input type="checkbox" id="docxSecondClassToggle" />
+                  追加班別
+                </label>
+                <label id="docxSecondClassRow" class="hidden">
+                  追加班別
+                  <select id="docxClassSelectSecondary">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label id="docxRelayRowSecondary" class="checkbox-inline hidden">
+                  <input type="checkbox" id="docxRelayTeacherSecondary" />
+                  使用接力老師 (追加)
+                </label>
+                <div id="docxPreviewSecondary" class="docx-preview hidden">
+                  <div><span class="pill">班別</span> <span data-field="sku">-</span></div>
+                  <div><span class="pill">上課日</span> <span data-field="weekday">-</span></div>
+                  <div><span class="pill">時間</span> <span data-field="time">-</span></div>
+                  <div><span class="pill">導師</span> <span data-field="teacher">-</span></div>
+                  <div><span class="pill">課室</span> <span data-field="room">-</span></div>
+                </div>
+              </details>
+              <div class="form-actions">
+                <button id="docxGenerateBtn" class="btn primary" type="button">生成文件</button>
+                <button id="docxOpenFolderBtn" class="btn secondary" type="button">打開輸出資料夾</button>
+              </div>
+            </form>
+            <div id="docxOutput" class="docx-output"></div>
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="messages">
+        <section class="grid fee-guide-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>訊息列表</h2>
+            </div>
+            <div class="filters">
+              <input id="messageSearchInput" type="text" placeholder="搜尋訊息..." />
+              <select id="messageCategorySelect">
+                <option value="">全部分類</option>
+              </select>
+            </div>
+            <div class="list" id="messageList"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2 id="messageTitle">訊息內容</h2>
+              <button id="messageCopyBtn" class="btn secondary" type="button">複製</button>
+            </div>
+            <textarea id="messageOutput" class="template-output" readonly></textarea>
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="makeup-plan">
+        <section class="grid fee-guide-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>補課安排</h2>
+              <button id="makeupResetBtn" class="btn secondary" type="button">重設</button>
+            </div>
+            <form id="makeupForm" class="form">
+              <div class="form-header">
+                <div class="pill" id="makeupRowCount">0 行</div>
+                <button id="makeupAddRowBtn" class="btn secondary" type="button">新增一行</button>
+              </div>
+              <div id="makeupRows" class="makeup-rows"></div>
+              <datalist id="makeupTimeOptions">
+                <option value="19:00-21:30"></option>
+                <option value="10:30-13:00"></option>
+                <option value="13:30-16:00"></option>
+                <option value="16:15-18:45"></option>
+              </datalist>
+            </form>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>模板內容</h2>
+              <button id="makeupCopyBtn" class="btn secondary" type="button">複製</button>
+            </div>
+            <textarea id="makeupOutput" class="template-output" readonly></textarea>
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="promote-notice">
+        <section class="grid fee-guide-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2>升班通知設定</h2>
+            </div>
+            <form id="promoteNoticeForm" class="form">
+              <label>
+                來源班別（升班前）
+                <select id="promoteSourceClassSelect">
+                  <option value="">請選擇</option>
+                </select>
+              </label>
+              <label>
+                目標班別（升班後）
+                <select id="promoteTargetClassSelect">
+                  <option value="">請選擇（先選來源班別）</option>
+                </select>
+              </label>
+              <label>
+                稱呼
+                <input type="text" id="promoteAddresseeInput" placeholder="初級班同學" />
+              </label>
+              <label>
+                開課月份
+                <div class="promote-body-row">
+                  <span class="promote-body-static">本班同學將於</span>
+                  <input type="number" id="promoteMonthInput" min="1" max="12" placeholder="月" class="promote-month-input" />
+                  <span class="promote-body-static" id="promoteBodySuffix">月份班畢業，並升上班。新課程詳情如下:</span>
+                </div>
+              </label>
+              <div class="promote-fields-section">
+                <p class="muted-hint">以下欄位會自動填寫，可手動修改：</p>
+                <div class="promote-fields">
+                  <label>名稱 <input type="text" id="promoteFieldName" /></label>
+                  <label>開課日期 <input type="text" id="promoteFieldStartDate" /></label>
+                  <label>全課程修讀期 <input type="text" id="promoteFieldDuration" /></label>
+                  <label>時間 <input type="text" id="promoteFieldTime" /></label>
+                  <label>導師 <input type="text" id="promoteFieldTeacher" /></label>
+                  <label>上課地點 <input type="text" id="promoteFieldLocation" /></label>
+                  <label>備註 <input type="text" id="promoteFieldRemarks" /></label>
+                  <label>簽署月份 <input type="text" id="promoteFieldSignatureDate" /></label>
+                </div>
+              </div>
+              <div id="promoteTextbookInfo" class="promote-textbook-info hidden">
+                <label class="checkbox-inline">
+                  <input type="checkbox" id="promoteIncludeTextbook" checked />
+                  包含教材費
+                </label>
+                <div id="promoteTextbookList"></div>
+              </div>
+              <div class="form-actions">
+                <button id="promoteGenerateBtn" class="btn primary" type="button">生成升班通知</button>
+                <button id="promoteOpenFolderBtn" class="btn secondary" type="button">打開輸出資料夾</button>
+                <button id="promoteResetBtn" class="btn secondary" type="button">重設</button>
+              </div>
+            </form>
+            <div id="promoteOutput" class="docx-output"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h2>預覽</h2>
+            </div>
+            <div id="promotePreviewCard" class="promote-notice-preview">
+              <p class="muted-hint">請選擇目標班別以預覽通知。</p>
+            </div>
+          </div>
+        </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="eps-audit">
+          <section class="card">
+            <div class="card-header">
+              <h2>EPS 記錄</h2>
+              <div class="filters">
+                <button id="epsPrevDay" class="btn secondary" type="button">&#x25C0;</button>
+                <input type="date" id="epsDatePicker" />
+                <button id="epsNextDay" class="btn secondary" type="button">&#x25B6;</button>
+                <button id="epsToday" class="btn secondary" type="button">今天</button>
+                <span id="epsDayOfWeek" class="pill"></span>
+              </div>
+            </div>
+          </section>
+
+          <div id="epsStickyBar" class="eps-sticky-bar">
+            <span>Sheet: <strong id="epsStickySheet">$0</strong></span>
+            <span>操作員: <strong id="epsStickyOps">$0</strong></span>
+            <span>昨日結算: <strong id="epsStickyPastDay">$0</strong></span>
+            <span id="epsStickyStatus" class="eps-sticky-status"></span>
+          </div>
+
+          <section class="card">
+            <div class="card-header">
+              <h2>交易輸入</h2>
+              <div class="filters">
+                <button id="epsPeriodBefore" class="btn secondary active" type="button">1900前</button>
+                <button id="epsPeriodAfter" class="btn secondary" type="button">1900後</button>
+              </div>
+            </div>
+            <div id="epsItemsTable" class="table-wrapper"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-header">
+              <h2>EPS 核數</h2>
+            </div>
+            <div class="eps-audit-grid">
+              <div class="eps-audit-summary">
+                <div>班別小計: <strong><span id="epsClassSubtotal">$0</span></strong></div>
+                <div>書簿小計: <strong><span id="epsBookSubtotal">$0</span></strong></div>
+                <div>其他小計: <strong><span id="epsOtherSubtotal">$0</span></strong></div>
+                <hr />
+                <div>1900前合計: <strong><span id="epsBeforeTotal">$0</span></strong></div>
+                <div>1900後合計: <strong><span id="epsAfterTotal">$0</span></strong></div>
+                <div>前日結轉: <strong><span id="epsPastDay">$0</span></strong></div>
+                <hr />
+                <div class="eps-sheet-total">Sheet 合計: <strong><span id="epsSheetTotal">$0</span></strong></div>
+              </div>
+              <div class="eps-operators">
+                <div id="epsOpsLabel" style="font-weight:600; margin-bottom:4px;">操作員 (1900前)</div>
+                <label>操作員 1 <input type="number" id="epsOp1" min="0" value="0" /></label>
+                <label>操作員 2 <input type="number" id="epsOp2" min="0" value="0" /></label>
+                <label>操作員 3 <input type="number" id="epsOp3" min="0" value="0" /></label>
+                <hr />
+                <div>操作員合計: <strong><span id="epsOpsSum">$0</span></strong></div>
+                <div id="epsOpsCombinedRow" class="hidden">
+                  <hr />
+                  <div style="font-weight:600; margin-bottom:4px;">前+後 合計</div>
+                  <div>操作員 1: <strong><span id="epsOpCombined1">$0</span></strong></div>
+                  <div>操作員 2: <strong><span id="epsOpCombined2">$0</span></strong></div>
+                  <div>操作員 3: <strong><span id="epsOpCombined3">$0</span></strong></div>
+                  <div>操作員總計: <strong><span id="epsOpsCombined">$0</span></strong></div>
+                </div>
+              </div>
+            </div>
+            <div id="epsCheckResult" class="eps-check-result"></div>
+            <div id="epsCheckResult2" class="eps-check-result hidden"></div>
+            <div class="action-group" style="margin-top:12px;">
+              <label for="epsOutputPath" style="font-size:13px;">匯出路徑:</label>
+              <input id="epsOutputPath" type="text" placeholder="例: C:\Reports" style="flex:1;min-width:200px;">
+              <button id="epsSetPathBtn" class="btn secondary" type="button">設定路徑</button>
+            </div>
+            <div class="action-group" style="margin-top:12px;">
+              <button id="epsSaveBtn" class="btn primary" type="button">儲存</button>
+              <button id="epsExportBtn" class="btn secondary" type="button">匯出</button>
+            </div>
+          </section>
+
+          <section class="card card-collapsible collapsed">
+            <div class="card-header">
+              <h2>歷史記錄</h2>
+              <button class="btn secondary collapse-toggle" type="button">展開</button>
+            </div>
+            <div id="epsHistoryList" class="list"></div>
+          </section>
+        </section>
+
+        <section class="tab-content" data-tab-content="stock">
+          <section class="card">
+            <div class="card-header">
+              <h2>資料核實</h2>
+              <button id="stockReviewBtn" class="btn secondary" type="button">核實課堂人數</button>
+            </div>
+            <div id="stockReviewBanner"></div>
+            <div id="stockQuickReview" class="hidden">
+              <div class="filters" style="margin-bottom:8px;">
+                <select id="reviewWeekdayFilter">
+                  <option value="">全部上課日</option>
+                  <option value="0">星期一</option>
+                  <option value="1">星期二</option>
+                  <option value="2">星期三</option>
+                  <option value="3">星期四</option>
+                  <option value="4">星期五</option>
+                  <option value="5">星期六</option>
+                  <option value="6">星期日</option>
+                </select>
+                <select id="reviewLevelFilter">
+                  <option value="">全部等級</option>
+                </select>
+              </div>
+              <table class="stock-review-table">
+                <thead>
+                  <tr><th>班別</th><th>等級</th><th>學生人數</th></tr>
+                </thead>
+                <tbody id="stockReviewBody"></tbody>
+              </table>
+              <div class="action-group" style="margin-top:12px;">
+                <button id="stockConfirmAllBtn" class="btn secondary" type="button">全部確認（無更改）</button>
+                <button id="stockSaveReviewBtn" class="btn primary" type="button">儲存並確認</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-header">
+              <h2>存貨一覽</h2>
+            </div>
+            <div id="inventoryTable"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-header">
+              <h2>升班需求預測</h2>
+              <label class="inline-label">
+                門檻（剩餘堂數 ≤）
+                <input type="number" id="promotionThreshold" min="1" max="20" value="3" style="width:60px;" />
+              </label>
+            </div>
+            <div id="promotionTable"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <!-- Tasks Dropdown Panel -->
+    <div class="tasks-dropdown-backdrop" id="tasksBackdrop"></div>
+    <div id="tasksDropdown" class="tasks-dropdown">
+      <div class="card-header">
+        <h2>待辦事項</h2>
+        <button id="taskClearDone" class="btn secondary" type="button">清除已完成</button>
+      </div>
+      <div class="task-add-bar">
+        <input type="text" id="taskInput" placeholder="新增待辦事項..." />
+        <input type="time" id="taskTimeInput" />
+        <button id="taskAddBtn" class="btn primary" type="button">新增</button>
+      </div>
+      <div id="taskList" class="task-list"></div>
+      <div class="task-done-section">
+        <button id="taskDoneToggle" class="task-done-header" type="button">
+          已完成 (<span id="taskDoneCount">0</span>)
+        </button>
+        <div id="taskDoneList" class="task-list task-done-list"></div>
+      </div>
+    </div>
+
+    <div id="scheduleModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>班別詳情</h2>
+          <button id="closeScheduleModal" class="btn secondary" type="button">關閉</button>
+        </div>
+        <div class="modal-section">
+          <div class="modal-grid">
+            <label>
+              班別
+              <input type="text" id="detailSku" />
+            </label>
+            <label>
+              課室
+              <input type="text" id="detailRoom" />
+            </label>
+            <label>
+              導師
+              <select id="detailTeacher"></select>
+            </label>
+            <label>
+              時間
+              <select id="detailTime"></select>
+            </label>
+            <label>
+              接力老師
+              <select id="detailRelayTeacher"></select>
+            </label>
+            <label>
+              接力時間
+              <input type="date" id="detailRelayDate" />
+            </label>
+            <label>
+              學生人數
+              <input type="number" id="detailStudents" min="0" />
+            </label>
+          </div>
+          <div class="action-group">
+            <button id="saveClassDetail" class="btn primary" type="button">儲存資料</button>
+            <button id="deleteClassBtn" class="btn danger" type="button">刪除班別</button>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <h3>課堂日程</h3>
+          <div class="filters">
+            <button id="terminateClassBtn" class="btn danger" type="button">結束班別</button>
+          </div>
+          <div class="modal-grid">
+            <label>
+              新增上課日期
+              <input type="date" id="addLessonDate" />
+            </label>
+            <button id="addLessonBtn" class="btn secondary" type="button">新增</button>
+            <label>
+              取消上課日期
+              <input type="date" id="removeLessonDate" />
+            </label>
+            <button id="removeLessonBtn" class="btn secondary" type="button">取消</button>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>類型</th>
+                </tr>
+              </thead>
+              <tbody id="scheduleBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <h3>改期記錄</h3>
+          <div class="modal-grid">
+            <label>
+              原定日期
+              <input type="date" id="postponeOriginalDate" />
+            </label>
+            <div class="field-inline">
+              <label>
+                補課日期
+                <input type="date" id="postponeMakeupDate" />
+              </label>
+              <label class="checkbox-inline">
+                <input type="checkbox" id="postponeAutoWeek" />
+                順延一週
+              </label>
+            </div>
+            <label>
+              原因
+              <input type="text" id="postponeReason" />
+            </label>
+            <button id="addPostponeBtn" class="btn secondary" type="button">新增改期</button>
+          </div>
+          <div class="list" id="postponeList"></div>
+        </div>
+
+        <div class="modal-section">
+          <h3>手動調整記錄</h3>
+          <div class="list" id="overrideList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="messageCategoryModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>編輯分類</h2>
+          <button id="closeMessageCategoryModal" class="btn secondary" type="button">關閉</button>
+        </div>
+        <div class="modal-section">
+          <label>
+            分類
+            <input type="text" id="messageCategoryInput" placeholder="例如：退款 / 改期" />
+          </label>
+          <div class="action-group">
+            <button id="saveMessageCategoryBtn" class="btn primary" type="button">儲存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <div class="fab">
+      <button id="fabToggle" class="fab-toggle" type="button">&#x22EE;</button>
+      <div class="fab-actions">
+        <button id="jumpTopBtn" class="fab-action-btn" type="button" title="回到頂部">&#x25B2;</button>
+        <button id="refreshBtn" class="fab-action-btn" type="button" title="重新整理">&#x21BB;</button>
+        <button id="timeCalcBtn" class="fab-action-btn" type="button" title="時間計算">&#x23F1;</button>
+      </div>
+      <div id="timeCalcPopover" class="fab-popover hidden">
+        <div class="fab-popover-header">
+          <span>時間計算</span>
+          <button id="timeCalcClose" class="fab-popover-close" type="button">&times;</button>
+        </div>
+        <div class="fab-popover-body">
+          <div class="time-calc-now">
+            <span class="time-calc-label">現在時間</span>
+            <span id="timeCalcCurrent" class="time-calc-value">--:--:--</span>
+          </div>
+          <div class="time-calc-input">
+            <label>
+              <span class="time-calc-label">時長</span>
+              <div class="time-calc-fields">
+                <input type="number" id="timeCalcHours" min="0" max="12" value="1" class="time-calc-num" />
+                <span>時</span>
+                <input type="number" id="timeCalcMinutes" min="0" max="59" value="30" class="time-calc-num" />
+                <span>分</span>
+              </div>
+            </label>
+          </div>
+          <div class="time-calc-result">
+            <span class="time-calc-label">結束時間</span>
+            <span id="timeCalcResult" class="time-calc-value time-calc-result-value">--:--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="text/javascript" src="/eel.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
