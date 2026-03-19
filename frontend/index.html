@@ -3,12 +3,83 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DIJ前線助手</title>
+    <title>DIJA</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- Login Screen Overlay -->
+    <div id="loginScreen" class="login-screen">
+      <div class="login-card">
+        <h1 class="login-title">DIJA</h1>
+
+        <!-- Login Form (default view) -->
+        <div id="loginView">
+          <form id="loginForm" class="login-form">
+            <label class="login-label">
+              用戶名稱
+              <input type="text" id="loginUsername" autocomplete="off" required />
+            </label>
+            <label class="login-label">
+              密碼
+              <input type="password" id="loginPassword" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="4 位數字" required />
+            </label>
+            <div id="loginError" class="login-error hidden"></div>
+            <button type="submit" id="loginBtn" class="btn primary login-btn">登入</button>
+          </form>
+          <p id="setupLink" class="login-switch-link" style="display:none;">首次使用？<a href="#" id="showSetupBtn">建立管理員帳號</a></p>
+        </div>
+
+        <!-- Setup Form (first-time only, toggled via link) -->
+        <div id="setupView" style="display:none;">
+          <p class="login-subtitle">首次使用 — 建立管理員帳號</p>
+          <form id="setupForm" class="login-form">
+            <label class="login-label">
+              用戶名稱
+              <input type="text" id="setupUsername" autocomplete="off" required />
+            </label>
+            <label class="login-label">
+              顯示名稱
+              <input type="text" id="setupDisplayName" />
+            </label>
+            <label class="login-label">
+              密碼
+              <input type="password" id="setupPassword" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="4 位數字" required />
+            </label>
+            <label class="login-label">
+              確認密碼
+              <input type="password" id="setupPasswordConfirm" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="4 位數字" required />
+            </label>
+            <div id="setupError" class="login-error hidden"></div>
+            <button type="submit" class="btn primary login-btn">建立帳號</button>
+          </form>
+          <p class="login-switch-link"><a href="#" id="showLoginBtn">返回登入</a></p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Session Expired Grace Prompt -->
+    <div id="sessionExpiredOverlay" class="login-screen hidden">
+      <div class="login-card">
+        <h2 class="login-title">工作階段已過期</h2>
+        <p class="login-subtitle">請重新輸入密碼繼續</p>
+        <form id="sessionExpiredForm" class="login-form">
+          <label class="login-label">
+            密碼
+            <input type="password" id="sessionExpiredPassword" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="4 位數字" required />
+          </label>
+          <div id="sessionExpiredError" class="login-error hidden"></div>
+          <div class="login-grace-buttons">
+            <button type="submit" class="btn primary login-btn">繼續</button>
+            <button type="button" id="sessionExpiredLogout" class="btn secondary">登出</button>
+          </div>
+          <div id="sessionExpiredTimer" class="login-timer"></div>
+        </form>
+      </div>
+    </div>
+
     <div id="locationBanner" class="location-banner"></div>
-    <div class="app layout">
+    <div class="app layout hidden" id="mainApp">
       <aside class="sidebar">
         <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="切換側邊欄">◂</button>
         <div class="location-switcher">
@@ -70,6 +141,10 @@
           <button class="tab-button tab-pinned" data-tab="tasks" data-pinned="true" title="待辦事項">
             <span class="tab-label">待辦事項</span>
             <span class="tab-icon">事</span>
+          </button>
+          <button class="tab-button hidden" data-tab="admin" id="adminTabBtn" title="管理員">
+            <span class="tab-label">管理員</span>
+            <span class="tab-icon">管</span>
           </button>
           <div class="tab-divider"></div>
         </nav>
@@ -920,7 +995,93 @@
             <div id="promotionTable"></div>
           </section>
         </section>
+
+        <!-- Admin Panel -->
+        <section class="tab-content" data-tab-content="admin">
+          <div class="admin-header">
+            <h2>管理員面板</h2>
+            <div class="admin-sub-tabs">
+              <button class="btn secondary active" data-admin-tab="users" type="button">用戶管理</button>
+              <button class="btn secondary" data-admin-tab="roles" type="button">角色權限</button>
+              <button class="btn secondary" data-admin-tab="audit" type="button">操作記錄</button>
+            </div>
+          </div>
+
+          <!-- Users Sub-Tab -->
+          <div class="admin-sub-content active" data-admin-content="users">
+            <div class="card">
+              <div class="card-header">
+                <h3>用戶列表</h3>
+                <button id="createUserBtn" class="btn primary" type="button">新增用戶</button>
+              </div>
+              <table class="admin-table" id="usersTable">
+                <thead>
+                  <tr>
+                    <th>用戶名稱</th>
+                    <th>顯示名稱</th>
+                    <th>角色</th>
+                    <th>最後登入</th>
+                    <th>狀態</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Roles Sub-Tab -->
+          <div class="admin-sub-content" data-admin-content="roles">
+            <div class="card">
+              <div class="card-header">
+                <h3>角色權限設定</h3>
+              </div>
+              <div class="role-editor">
+                <div class="role-selector">
+                  <label>選擇角色 <select id="roleSelect"></select></label>
+                  <button id="saveRolePermsBtn" class="btn primary" type="button">儲存</button>
+                </div>
+                <div id="permissionsList" class="permissions-grid"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audit Sub-Tab -->
+          <div class="admin-sub-content" data-admin-content="audit">
+            <div class="card">
+              <div class="card-header">
+                <h3>操作記錄</h3>
+                <button id="refreshAuditBtn" class="btn secondary" type="button">重新整理</button>
+              </div>
+              <table class="admin-table" id="auditTable">
+                <thead>
+                  <tr>
+                    <th>時間</th>
+                    <th>用戶</th>
+                    <th>事件</th>
+                    <th>詳情</th>
+                    <th>結果</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="audit-pagination">
+                <button id="auditPrevBtn" class="btn secondary" type="button">上一頁</button>
+                <span id="auditPageInfo"></span>
+                <button id="auditNextBtn" class="btn secondary" type="button">下一頁</button>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
+
+      <!-- User Info Bar -->
+      <div id="userInfoBar" class="user-info-bar">
+        <span id="userDisplayName" class="user-display-name"></span>
+        <span id="userRole" class="user-role-badge"></span>
+        <button id="changePasswordBtn" class="btn secondary btn-sm" type="button">改密碼</button>
+        <button id="logoutBtn" class="btn secondary btn-sm" type="button">登出</button>
+      </div>
     </div>
 
     <!-- Tasks Dropdown Panel -->
@@ -1106,7 +1267,6 @@
       </div>
     </div>
 
-    <script type="text/javascript" src="/eel.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

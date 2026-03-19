@@ -1,7 +1,0 @@
-1. book count - done
-2. teacher script- skip
-3. analytic dashboard
-4. dashboard time calculator - done
-5. EPS export
-6. overview qol (new class) - done
-7. task, to-do - done

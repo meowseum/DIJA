@@ -1,3 +1,508 @@
+const { invoke: rawInvoke } = window.__TAURI__.core;
+
+// --- Auth state ---
+let sessionToken = null;
+let currentUser = null;
+let currentPermissions = new Set();
+let _graceTimerId = null;
+
+/** Auth-aware invoke wrapper. Injects session_token into every call. */
+async function invoke(command, args = {}) {
+  // These commands don't need auth
+  const noAuth = ['check_setup_needed', 'setup_admin', 'login'];
+  if (!noAuth.includes(command) && sessionToken) {
+    args.sessionToken = sessionToken;
+  }
+  const result = await rawInvoke(command, args);
+  if (result && result.auth_error) {
+    handleSessionExpired();
+    throw new Error(result.error || 'Session expired');
+  }
+  return result;
+}
+
+function handleSessionExpired() {
+  if (!currentUser) return;
+  // Admin: immediate re-login
+  if (currentUser.role === 'admin') {
+    doLogout(true);
+    return;
+  }
+  // Staff: grace prompt (30 seconds)
+  showSessionExpiredPrompt();
+}
+
+function showLoginScreen() {
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+  document.getElementById('loginError').classList.add('hidden');
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginUsername').focus();
+}
+
+function hideLoginScreen() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+}
+
+function showSessionExpiredPrompt() {
+  const overlay = document.getElementById('sessionExpiredOverlay');
+  overlay.classList.remove('hidden');
+  document.getElementById('sessionExpiredPassword').value = '';
+  document.getElementById('sessionExpiredError').classList.add('hidden');
+  document.getElementById('sessionExpiredPassword').focus();
+  let remaining = 30;
+  const timerEl = document.getElementById('sessionExpiredTimer');
+  timerEl.textContent = `${remaining} 秒後自動登出`;
+  _graceTimerId = setInterval(() => {
+    remaining--;
+    timerEl.textContent = `${remaining} 秒後自動登出`;
+    if (remaining <= 0) {
+      clearInterval(_graceTimerId);
+      doLogout(true);
+    }
+  }, 1000);
+}
+
+async function doLogout(skipApi) {
+  clearInterval(_graceTimerId);
+  if (!skipApi && sessionToken) {
+    try { await rawInvoke('logout', { sessionToken: sessionToken }); } catch {}
+  }
+  sessionToken = null;
+  currentUser = null;
+  currentPermissions = new Set();
+  document.getElementById('sessionExpiredOverlay').classList.add('hidden');
+  showLoginScreen();
+}
+
+function applyPermissions(perms) {
+  currentPermissions = new Set(perms);
+  // Map tabs to required permissions
+  const tabPerms = {
+    'classes': 'classes.view',
+    'reminders': 'classes.view',
+    'settings': 'settings.modify',
+    'fee-guide': 'classes.view',
+    'docx-output': 'documents.view',
+    'messages': 'documents.view',
+    'makeup-plan': 'documents.view',
+    'promote-notice': 'documents.view',
+    'stock': 'textbooks.view',
+    'eps-audit': 'eps.view',
+  };
+  document.querySelectorAll('.tab-button').forEach(btn => {
+    const tab = btn.dataset.tab;
+    if (tab === 'tasks') return; // always visible
+    if (tab === 'admin') {
+      btn.classList.toggle('hidden', !perms.some(p => p.startsWith('admin.')));
+      return;
+    }
+    const req = tabPerms[tab];
+    if (req && !currentPermissions.has(req)) {
+      btn.classList.add('hidden');
+    } else {
+      btn.classList.remove('hidden');
+    }
+  });
+
+  // User info bar
+  if (currentUser) {
+    document.getElementById('userDisplayName').textContent = currentUser.display_name || currentUser.username;
+    document.getElementById('userRole').textContent = currentUser.role;
+  }
+}
+
+// --- Helper: complete login after successful auth result ---
+function completeLogin(result) {
+  sessionToken = result.token;
+  currentUser = result.user;
+  applyPermissions(result.permissions);
+  hideLoginScreen();
+  loadState();
+  loadFeeTemplate();
+  loadDocxTemplates();
+  loadMessageTemplates();
+  loadMakeupTemplate();
+  checkForUpdate();
+}
+
+// --- Auto-update check ---
+async function checkForUpdate() {
+  try {
+    const updater = window.__TAURI__?.updater;
+    const process = window.__TAURI__?.process;
+    if (!updater || !process) return;
+    const update = await updater.check();
+    if (update) {
+      const yes = confirm(`有新版本 v${update.version} 可用，是否更新？`);
+      if (yes) {
+        await update.downloadAndInstall();
+        await process.relaunch();
+      }
+    }
+  } catch (e) {
+    console.log('Update check skipped:', e);
+  }
+}
+
+// --- Login form handler ---
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!username || !password) return;
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.textContent = '處理中...';
+
+  try {
+    const result = await rawInvoke('login', { username, password });
+    if (result.ok) {
+      completeLogin(result);
+    } else {
+      errEl.textContent = result.error;
+      errEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    errEl.textContent = '登入失敗: ' + err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登入';
+  }
+});
+
+// --- Setup form handler (first-time account creation) ---
+document.getElementById('setupForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('setupError');
+  errEl.classList.add('hidden');
+  const username = document.getElementById('setupUsername').value.trim();
+  const displayName = document.getElementById('setupDisplayName').value.trim() || username;
+  const password = document.getElementById('setupPassword').value;
+  const confirm = document.getElementById('setupPasswordConfirm').value;
+  if (!username || !password) return;
+  if (password !== confirm) {
+    errEl.textContent = '密碼不一致。';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  try {
+    const result = await rawInvoke('setup_admin', { username, password, displayName });
+    if (result.ok) {
+      completeLogin(result);
+    } else {
+      errEl.textContent = result.error;
+      errEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    errEl.textContent = '建立失敗: ' + err.message;
+    errEl.classList.remove('hidden');
+  }
+});
+
+// --- Toggle between login and setup views ---
+document.getElementById('showSetupBtn').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('setupView').style.display = '';
+});
+document.getElementById('showLoginBtn').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('setupView').style.display = 'none';
+  document.getElementById('loginView').style.display = '';
+});
+
+// --- Session expired re-auth ---
+document.getElementById('sessionExpiredForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const password = document.getElementById('sessionExpiredPassword').value;
+  const errEl = document.getElementById('sessionExpiredError');
+  errEl.classList.add('hidden');
+  if (!password || !currentUser) return;
+  try {
+    const result = await rawInvoke('login', { username: currentUser.username, password });
+    if (result.ok) {
+      clearInterval(_graceTimerId);
+      sessionToken = result.token;
+      currentUser = result.user;
+      applyPermissions(result.permissions);
+      document.getElementById('sessionExpiredOverlay').classList.add('hidden');
+    } else {
+      errEl.textContent = result.error;
+      errEl.classList.remove('hidden');
+    }
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  }
+});
+document.getElementById('sessionExpiredLogout').addEventListener('click', () => doLogout(true));
+
+// --- Logout button ---
+document.getElementById('logoutBtn').addEventListener('click', () => doLogout(false));
+
+// --- Change password ---
+document.getElementById('changePasswordBtn').addEventListener('click', async () => {
+  const oldPw = prompt('請輸入目前密碼：');
+  if (!oldPw) return;
+  const newPw = prompt('請輸入新密碼（4 位數字）：');
+  if (!newPw) return;
+  const confirmPw = prompt('請再次輸入新密碼：');
+  if (newPw !== confirmPw) { alert('密碼不一致。'); return; }
+  try {
+    const r = await invoke('change_password', { oldPassword: oldPw, newPassword: newPw });
+    alert(r.ok ? '密碼已更新。' : (r.error || '更新失敗。'));
+  } catch (err) { alert('錯誤: ' + err.message); }
+});
+
+// --- App init: check setup then show login ---
+(async function authInit() {
+  try {
+    const r = await rawInvoke('check_setup_needed');
+    if (r.setup_needed) {
+      // Auto-create default admin account
+      const setupResult = await rawInvoke('setup_admin', {
+        username: 'Jeff',
+        password: '9677',
+        displayName: 'Jeff',
+      });
+      if (setupResult.ok) {
+        completeLogin(setupResult);
+        return;
+      }
+      // If auto-setup failed, show setup link so user can create manually
+      document.getElementById('setupLink').style.display = '';
+    }
+  } catch (err) {
+    console.error('Setup check failed:', err);
+  }
+  showLoginScreen();
+})();
+
+// ============================================
+// ADMIN PANEL LOGIC
+// ============================================
+// Sub-tab switching
+document.querySelectorAll('[data-admin-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-admin-tab]').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[data-admin-content]').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector(`[data-admin-content="${btn.dataset.adminTab}"]`).classList.add('active');
+    if (btn.dataset.adminTab === 'users') loadAdminUsers();
+    if (btn.dataset.adminTab === 'roles') loadAdminRoles();
+    if (btn.dataset.adminTab === 'audit') loadAuditLog();
+  });
+});
+
+async function loadAdminUsers() {
+  try {
+    const r = await invoke('list_users');
+    if (!r.ok) return;
+    const tbody = document.querySelector('#usersTable tbody');
+    tbody.innerHTML = '';
+    for (const u of r.users) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(u.username)}</td>
+        <td>${esc(u.display_name)}</td>
+        <td>${esc(u.role)}</td>
+        <td>${u.last_login || '—'}</td>
+        <td class="${u.active ? 'status-active' : 'status-inactive'}">${u.active ? '啟用' : '停用'}</td>
+        <td>
+          <button class="action-btn" data-action="reset-pw" data-id="${u.id}">重設密碼</button>
+          ${u.active
+            ? `<button class="action-btn danger" data-action="deactivate" data-id="${u.id}">停用</button>`
+            : `<button class="action-btn" data-action="reactivate" data-id="${u.id}">啟用</button>`}
+          <button class="action-btn" data-action="edit-role" data-id="${u.id}" data-role="${u.role}">更改角色</button>
+        </td>`;
+      tbody.appendChild(tr);
+    }
+  } catch {}
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+document.querySelector('#usersTable').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.action-btn');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (btn.dataset.action === 'reset-pw') {
+    const pw = prompt('輸入新密碼（最少 8 字元）：');
+    if (!pw) return;
+    const r = await invoke('reset_password', { userId: id, newPassword: pw });
+    alert(r.ok ? '密碼已重設。' : (r.error || '失敗'));
+  } else if (btn.dataset.action === 'deactivate') {
+    if (!confirm('確定停用此帳號？')) return;
+    const r = await invoke('deactivate_user', { userId: id });
+    alert(r.ok ? '已停用。' : (r.error || '失敗'));
+    loadAdminUsers();
+  } else if (btn.dataset.action === 'reactivate') {
+    const r = await invoke('reactivate_user', { userId: id });
+    alert(r.ok ? '已啟用。' : (r.error || '失敗'));
+    loadAdminUsers();
+  } else if (btn.dataset.action === 'edit-role') {
+    const newRole = prompt('輸入新角色（如 admin, staff）：', btn.dataset.role);
+    if (!newRole || newRole === btn.dataset.role) return;
+    const r = await invoke('update_user', { userId: id, role: newRole });
+    alert(r.ok ? '角色已更新。' : (r.error || '失敗'));
+    loadAdminUsers();
+  }
+});
+
+document.getElementById('createUserBtn').addEventListener('click', async () => {
+  const username = prompt('用戶名稱：');
+  if (!username) return;
+  const displayName = prompt('顯示名稱：', username);
+  const password = prompt('密碼（4 位數字）：');
+  if (!password) return;
+  const role = prompt('角色（admin / staff）：', 'staff');
+  if (!role) return;
+  const r = await invoke('create_user', { username, passwordVal: password, role, displayName: displayName || username });
+  alert(r.ok ? '用戶已建立。' : (r.error || '失敗'));
+  loadAdminUsers();
+});
+
+async function loadAdminRoles() {
+  try {
+    const rolesR = await invoke('list_roles');
+    const permsR = await invoke('list_all_permissions');
+    if (!rolesR.ok || !permsR.ok) return;
+
+    const sel = document.getElementById('roleSelect');
+    sel.innerHTML = '';
+    for (const role of rolesR.roles) {
+      const opt = document.createElement('option');
+      opt.value = role;
+      opt.textContent = role;
+      sel.appendChild(opt);
+    }
+
+    const grid = document.getElementById('permissionsList');
+    const categories = {};
+    for (const p of permsR.permissions) {
+      if (!categories[p.category]) categories[p.category] = [];
+      categories[p.category].push(p);
+    }
+    grid.innerHTML = '';
+    for (const [cat, perms] of Object.entries(categories)) {
+      const div = document.createElement('div');
+      div.className = 'perm-category';
+      div.innerHTML = `<h4>${esc(cat)}</h4>`;
+      for (const p of perms) {
+        div.innerHTML += `<label class="perm-item"><input type="checkbox" value="${p.key}"> ${esc(p.name)}</label>`;
+      }
+      grid.appendChild(div);
+    }
+
+    sel.addEventListener('change', loadRolePerms);
+    loadRolePerms();
+  } catch {}
+}
+
+async function loadRolePerms() {
+  const role = document.getElementById('roleSelect').value;
+  const r = await invoke('list_role_permissions', { role });
+  if (!r.ok) return;
+  const permSet = new Set(r.permissions);
+  const isAdmin = role === 'admin';
+  document.querySelectorAll('#permissionsList input[type="checkbox"]').forEach(cb => {
+    cb.checked = permSet.has(cb.value);
+    cb.disabled = isAdmin;
+  });
+}
+
+document.getElementById('saveRolePermsBtn').addEventListener('click', async () => {
+  const role = document.getElementById('roleSelect').value;
+  if (role === 'admin') { alert('Admin 角色不可修改。'); return; }
+  const perms = [];
+  document.querySelectorAll('#permissionsList input[type="checkbox"]:checked').forEach(cb => perms.push(cb.value));
+  const r = await invoke('set_role_permissions', { role, permissionList: perms });
+  alert(r.ok ? '權限已儲存。' : (r.error || '失敗'));
+});
+
+let auditOffset = 0;
+const AUDIT_PAGE_SIZE = 50;
+async function loadAuditLog() {
+  try {
+    const r = await invoke('get_audit_log', { limit: AUDIT_PAGE_SIZE, offset: auditOffset });
+    if (!r.ok) return;
+    const tbody = document.querySelector('#auditTable tbody');
+    tbody.innerHTML = '';
+    for (const e of r.entries) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(e.timestamp)}</td>
+        <td>${esc(e.username)}</td>
+        <td>${esc(e.event_type)}</td>
+        <td>${esc(e.details)}</td>
+        <td class="${e.success ? 'status-active' : 'status-inactive'}">${e.success ? '成功' : '失敗'}</td>`;
+      tbody.appendChild(tr);
+    }
+    document.getElementById('auditPageInfo').textContent =
+      `${auditOffset + 1}–${Math.min(auditOffset + AUDIT_PAGE_SIZE, r.total)} / ${r.total}`;
+    document.getElementById('auditPrevBtn').disabled = auditOffset === 0;
+    document.getElementById('auditNextBtn').disabled = auditOffset + AUDIT_PAGE_SIZE >= r.total;
+  } catch {}
+}
+document.getElementById('auditPrevBtn').addEventListener('click', () => { auditOffset = Math.max(0, auditOffset - AUDIT_PAGE_SIZE); loadAuditLog(); });
+document.getElementById('auditNextBtn').addEventListener('click', () => { auditOffset += AUDIT_PAGE_SIZE; loadAuditLog(); });
+document.getElementById('refreshAuditBtn').addEventListener('click', () => { auditOffset = 0; loadAuditLog(); });
+
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Unhandled promise rejection:", e.reason);
+});
+
+// --- Zoom persistence ---
+let currentZoom = 1.0;
+const ZOOM_STEP = 0.1;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2.0;
+
+function applyZoom(level) {
+  currentZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level));
+  document.documentElement.style.zoom = currentZoom;
+}
+
+let zoomSaveTimer = null;
+function saveZoomDebounced() {
+  clearTimeout(zoomSaveTimer);
+  zoomSaveTimer = setTimeout(() => {
+    invoke('set_zoom_level', { level: currentZoom }).catch(() => {});
+  }, 500);
+}
+
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "=" || e.key === "+")) {
+    e.preventDefault();
+    applyZoom(currentZoom + ZOOM_STEP);
+    saveZoomDebounced();
+  } else if ((e.ctrlKey || e.metaKey) && e.key === "-") {
+    e.preventDefault();
+    applyZoom(currentZoom - ZOOM_STEP);
+    saveZoomDebounced();
+  } else if ((e.ctrlKey || e.metaKey) && e.key === "0") {
+    e.preventDefault();
+    applyZoom(1.0);
+    saveZoomDebounced();
+  }
+});
+
+window.addEventListener("wheel", (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    applyZoom(currentZoom + delta);
+    saveZoomDebounced();
+  }
+}, { passive: false });
+
 const weekdays = ["一", "二", "三", "四", "五", "六", "日"];
 
 const statusLabels = {
@@ -470,7 +975,7 @@ const taskDoneToggle = document.getElementById("taskDoneToggle");
 const taskClearDone = document.getElementById("taskClearDone");
 
 async function loadState() {
-  const state = await eel.load_state()();
+  const state = await invoke('load_state');
   appState = {
     app_config: { location: "" },
     ...state,
@@ -486,6 +991,10 @@ async function loadState() {
   }
   updateLocationBanner();
   updateLocationUI(appState.app_config?.location || "");
+  const savedZoom = parseFloat(appState.app_config?.zoom_level);
+  if (savedZoom && savedZoom >= ZOOM_MIN && savedZoom <= ZOOM_MAX) {
+    applyZoom(savedZoom);
+  }
   applyTabOrder();
   renderFilters();
   renderClasses();
@@ -752,8 +1261,7 @@ function updateMakeupOutput() {
 }
 
 async function loadMakeupTemplate() {
-  if (!eel.load_makeup_template) return;
-  const response = await eel.load_makeup_template()();
+  const response = await invoke('load_makeup_template');
   if (!response.ok) {
     if (makeupOutput) {
       makeupOutput.value = response.error || "無法載入補課安排模板。";
@@ -831,11 +1339,50 @@ function applyTabOrder() {
   Array.from(map.values()).forEach((button) => tabNav.appendChild(button));
 }
 
-function setTabDragState(enabled) {
+function setTabReorderState(enabled) {
   if (!tabNav) return;
-  tabNav.querySelectorAll(".tab-button:not([data-pinned])").forEach((button) => {
-    button.draggable = enabled;
+  // Remove any existing reorder arrows
+  tabNav.querySelectorAll(".tab-reorder-arrows").forEach((el) => el.remove());
+  if (!enabled) return;
+  const buttons = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])"));
+  buttons.forEach((button, i) => {
+    const arrows = document.createElement("span");
+    arrows.className = "tab-reorder-arrows";
+    const upBtn = document.createElement("button");
+    upBtn.className = "tab-reorder-btn";
+    upBtn.textContent = "▲";
+    upBtn.disabled = i === 0;
+    upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, -1); });
+    const downBtn = document.createElement("button");
+    downBtn.className = "tab-reorder-btn";
+    downBtn.textContent = "▼";
+    downBtn.disabled = i === buttons.length - 1;
+    downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveTab(button, 1); });
+    arrows.appendChild(upBtn);
+    arrows.appendChild(downBtn);
+    button.appendChild(arrows);
   });
+}
+
+async function moveTab(button, direction) {
+  const buttons = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])"));
+  const idx = buttons.indexOf(button);
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= buttons.length) return;
+  const target = buttons[targetIdx];
+  if (direction === -1) {
+    tabNav.insertBefore(button, target);
+  } else {
+    tabNav.insertBefore(target, button);
+  }
+  // Refresh arrows to update disabled states
+  setTabReorderState(true);
+  // Save order
+  const order = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])")).map((btn) => btn.dataset.tab);
+  const response = await invoke('set_tab_order', { order });
+  if (!response.ok) {
+    showToast(response.error || "更新排序失敗。");
+  }
 }
 
 function updateTabOrderToggleLabel() {
@@ -1117,7 +1664,7 @@ function renderInventoryTable() {
 
   // Snapshot button handler
   controls.querySelector("#stockSnapshotBtn").addEventListener("click", async () => {
-    const response = await eel.save_monthly_stock(currentMonth, liveStock)();
+    const response = await invoke('save_monthly_stock', { month: currentMonth, stockData: liveStock });
     if (response.ok) {
       appState.stock_history[currentMonth] = { ...liveStock };
       showToast(`已儲存 ${currentMonth} 月份快照`, "success");
@@ -1269,7 +1816,7 @@ function renderQuickReviewPanel(show) {
 
 async function saveReviewTimestamp() {
   const ts = new Date().toISOString();
-  const resp = await eel.set_last_review_ts(ts)();
+  const resp = await invoke('set_last_review_ts', { ts });
   if (resp?.ok) {
     appState.app_config = appState.app_config || {};
     appState.app_config.last_review_ts = ts;
@@ -1538,7 +2085,14 @@ async function renderCalendar() {
   const { rangeStart, rangeEnd, label } = getCalendarRange(calendarMode, calendarAnchor);
   calendarLabel.textContent = label;
   syncCalendarJumpSelects();
-  const response = await eel.get_calendar_data(rangeStart, rangeEnd)();
+  let response;
+  try {
+    response = await invoke('get_calendar_data', { startDate: rangeStart, endDate: rangeEnd });
+  } catch (err) {
+    console.error("renderCalendar invoke error:", err);
+    calendarView.innerHTML = `<div>無法載入行事曆: ${err}</div>`;
+    return;
+  }
   if (!response.ok) {
     calendarView.innerHTML = "<div>無法載入行事曆</div>";
     return;
@@ -2201,8 +2755,7 @@ function syncFeeGuideFromClass() {
 }
 
 async function loadFeeTemplate() {
-  if (!eel.load_payment_template) return;
-  const response = await eel.load_payment_template()();
+  const response = await invoke('load_payment_template');
   if (response.ok) {
     feeTemplateBase = response.content || "";
   }
@@ -2210,8 +2763,7 @@ async function loadFeeTemplate() {
 }
 
 async function loadDocxTemplates() {
-  if (!eel.list_docx_templates) return;
-  const response = await eel.list_docx_templates()();
+  const response = await invoke('list_docx_templates');
   if (!response.ok) {
     if (docxOutput) {
       docxOutput.textContent = response.error || "無法載入模板。";
@@ -2223,8 +2775,7 @@ async function loadDocxTemplates() {
 }
 
 async function loadMessageTemplates() {
-  if (!eel.list_message_templates) return;
-  const response = await eel.list_message_templates()();
+  const response = await invoke('list_message_templates');
   if (!response.ok) {
     if (messageOutput) {
       messageOutput.value = response.error || "無法載入訊息。";
@@ -2237,8 +2788,7 @@ async function loadMessageTemplates() {
 }
 
 async function selectMessageTemplate(name) {
-  if (!eel.load_message_content) return;
-  const response = await eel.load_message_content(name)();
+  const response = await invoke('load_message_content', { templateName: name });
   if (!response.ok) {
     if (messageOutput) {
       messageOutput.value = response.error || "無法載入訊息內容。";
@@ -2304,12 +2854,12 @@ async function addClass(event) {
     data.relay_date = "";
   }
   setButtonLoading(submitBtn, true);
-  const response = await eel.create_class({
+  const response = await invoke('create_class', { data: {
     ...data,
     weekday: Number(data.weekday),
     student_count: Number(data.student_count || 0),
     lesson_total: Number(data.lesson_total || 0),
-  })();
+  } });
   setButtonLoading(submitBtn, false);
   if (!response.ok) {
     showToast(response.error || "新增班別失敗。");
@@ -2326,7 +2876,7 @@ async function addHoliday(event) {
   const submitBtn = form.querySelector('button[type="submit"]');
   const data = Object.fromEntries(new FormData(form));
   setButtonLoading(submitBtn, true);
-  await eel.add_holiday(data)();
+  await invoke('add_holiday', { data });
   setButtonLoading(submitBtn, false);
   form.reset();
   if (holidayEndDate) {
@@ -2336,7 +2886,7 @@ async function addHoliday(event) {
 }
 
 async function deleteHoliday(id) {
-  await eel.delete_holiday(id)();
+  await invoke('delete_holiday', { holidayId: id });
   await loadState();
 }
 
@@ -2353,7 +2903,7 @@ async function endClass(id) {
   if (!action) return;
 
   if (action === "結束") {
-    await eel.end_class_action(id, "terminate")();
+    await invoke('end_class_action', { classId: id, action: "terminate", targetId: "", newSku: "" });
   } else if (action === "合併") {
     const targetSku = prompt("輸入要合併的班別:");
     const target = appState.classes.find((cls) => cls.sku === targetSku);
@@ -2361,11 +2911,11 @@ async function endClass(id) {
       showToast("找不到目標班別。");
       return;
     }
-    await eel.end_class_action(id, "merge", target.id)();
+    await invoke('end_class_action', { classId: id, action: "merge", targetId: target.id, newSku: "" });
   } else if (action === "升級") {
     const newSku = prompt("輸入升級後的新班別:");
     if (!newSku) return;
-    await eel.end_class_action(id, "promote", "", newSku)();
+    await invoke('end_class_action', { classId: id, action: "promote", targetId: "", newSku: newSku });
   } else {
     showToast("未能識別操作。");
   }
@@ -2374,7 +2924,7 @@ async function endClass(id) {
 }
 
 async function openScheduleModal(classId) {
-  const response = await eel.get_class_schedule(classId)();
+  const response = await invoke('get_class_schedule', { classId: classId });
   if (!response.ok) {
     showToast(response.error || "無法載入日程。");
     return;
@@ -2586,7 +3136,7 @@ if (holidayOneDay && holidayStartDate && holidayEndDate) {
 if (locationSelect) {
   locationSelect.addEventListener("change", async () => {
     updateLocationUI(locationSelect.value);
-    const response = await eel.set_app_location(locationSelect.value)();
+    const response = await invoke('set_app_location', { location: locationSelect.value });
     if (!response.ok) {
       showToast(response.error || "設定地點失敗。");
       return;
@@ -2638,7 +3188,7 @@ document.querySelectorAll(".settings-form").forEach((form) => {
     event.preventDefault();
     const entryType = event.target.dataset.settingType;
     const data = Object.fromEntries(new FormData(event.target));
-    const response = await eel.add_setting(entryType, data.value || "")();
+    const response = await invoke('add_setting', { entryType: entryType, value: data.value || "" });
     if (!response.ok) {
       showToast(response.error || "新增設定失敗。");
       return;
@@ -2653,7 +3203,7 @@ if (priceForm) {
     event.preventDefault();
     const level = priceLevelSelect?.value || "";
     const price = Number(priceValueInput?.value || 0);
-    const response = await eel.set_level_price(level, price)();
+    const response = await invoke('set_level_price', { level, price });
     if (!response.ok) {
       showToast(response.error || "設定學費失敗。");
       return;
@@ -2666,7 +3216,7 @@ if (priceForm) {
 
 if (priceAdjustPlus) {
   priceAdjustPlus.addEventListener("click", async () => {
-    const response = await eel.adjust_level_prices(20)();
+    const response = await invoke('adjust_level_prices', { delta: 20 });
     if (!response.ok) {
       showToast(response.error || "調整學費失敗。");
       return;
@@ -2678,7 +3228,7 @@ if (priceAdjustPlus) {
 
 if (priceAdjustMinus) {
   priceAdjustMinus.addEventListener("click", async () => {
-    const response = await eel.adjust_level_prices(-20)();
+    const response = await invoke('adjust_level_prices', { delta: -20 });
     if (!response.ok) {
       showToast(response.error || "調整學費失敗。");
       return;
@@ -2696,7 +3246,7 @@ if (textbookForm) {
     const name = textbookNameInput?.value.trim() || "";
     const price = Number(textbookPriceInput?.value || 0);
     if (!name) { showToast("請輸入教材名稱。"); return; }
-    const response = await eel.set_textbook(name, price)();
+    const response = await invoke('set_textbook', { name, price });
     if (!response.ok) { showToast(response.error || "新增失敗。"); return; }
     showToast("教材已儲存", "success");
     textbookNameInput.value = "";
@@ -2718,7 +3268,7 @@ if (textbookList) {
     if (delBtn) {
       const name = delBtn.dataset.textbookDelete;
       if (!confirm(`確定刪除教材「${name}」？相關等級對應及存貨記錄亦會一併移除。`)) return;
-      const response = await eel.delete_textbook(name)();
+      const response = await invoke('delete_textbook', { name });
       if (!response.ok) { showToast(response.error || "刪除失敗。"); return; }
       showToast("教材已刪除", "success");
       await loadState();
@@ -2734,7 +3284,7 @@ if (levelTextbookList) {
       // Collect all checked books for this level
       const allChecks = levelTextbookList.querySelectorAll(`[data-ltb-level="${level}"][data-ltb-book]`);
       const selectedBooks = Array.from(allChecks).filter((c) => c.checked).map((c) => c.dataset.ltbBook);
-      const response = await eel.set_level_textbook(level, selectedBooks)();
+      const response = await invoke('set_level_textbook', { level, textbookNames: selectedBooks });
       if (!response.ok) { showToast(response.error || "設定失敗。"); return; }
       appState.settings.level_textbook = appState.settings.level_textbook || {};
       appState.settings.level_textbook[level] = selectedBooks;
@@ -2745,7 +3295,7 @@ if (levelTextbookList) {
     if (lnextSelect) {
       const level = lnextSelect.dataset.lnextLevel;
       const nextLevel = lnextSelect.value;
-      const response = await eel.set_level_next(level, nextLevel)();
+      const response = await invoke('set_level_next', { level, nextLevel: nextLevel });
       if (!response.ok) { showToast(response.error || "設定失敗。"); return; }
       appState.settings.level_next = appState.settings.level_next || {};
       appState.settings.level_next[level] = nextLevel;
@@ -2763,7 +3313,7 @@ if (inventoryTable) {
       const name = saveBtn.dataset.stockSave;
       const input = inventoryTable.querySelector(`[data-stock-name="${name}"]`);
       const count = parseInt(input?.value || "0", 10);
-      const response = await eel.set_textbook_stock(name, count)();
+      const response = await invoke('set_textbook_stock', { name, count });
       if (!response.ok) { showToast(response.error || "儲存失敗。"); return; }
       appState.settings.textbook_stock = appState.settings.textbook_stock || {};
       appState.settings.textbook_stock[name] = count;
@@ -2826,7 +3376,7 @@ if (stockSaveReviewBtn) {
       updates.push({ id: input.dataset.classId, student_count: parseInt(input.value || "0", 10) });
     });
     if (updates.length) {
-      const response = await eel.save_student_counts(updates)();
+      const response = await invoke('save_student_counts', { updates });
       if (!response.ok) { showToast(response.error || "儲存失敗。"); return; }
       // Update local state
       updates.forEach((u) => {
@@ -2892,47 +3442,15 @@ if (tabOrderToggle) {
   tabOrderToggle.addEventListener("click", () => {
     tabOrderUnlocked = !tabOrderUnlocked;
     updateTabOrderToggleLabel();
-    setTabDragState(tabOrderUnlocked);
+    setTabReorderState(tabOrderUnlocked);
     if (tabOrderUnlocked) {
-      showToast("拖拉標籤以排序", "info");
+      showToast("使用箭頭按鈕排序標籤", "info");
     }
   });
   updateTabOrderToggleLabel();
-  setTabDragState(false);
+  setTabReorderState(false);
 }
 
-if (tabNav) {
-  tabNav.addEventListener("dragstart", (event) => {
-    if (!tabOrderUnlocked) return;
-    const button = event.target.closest(".tab-button");
-    if (!button || button.dataset.pinned) return;
-    event.dataTransfer.setData("text/plain", button.dataset.tab || "");
-    event.dataTransfer.effectAllowed = "move";
-  });
-  tabNav.addEventListener("dragover", (event) => {
-    if (!tabOrderUnlocked) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  });
-  tabNav.addEventListener("drop", async (event) => {
-    if (!tabOrderUnlocked) return;
-    event.preventDefault();
-    const sourceKey = event.dataTransfer.getData("text/plain");
-    if (!sourceKey) return;
-    const source = tabNav.querySelector(`.tab-button[data-tab="${sourceKey}"]`);
-    const target = event.target.closest(".tab-button");
-    if (!source || !target || source === target || target.dataset.pinned) return;
-    tabNav.insertBefore(source, target);
-    // Save order, excluding pinned tabs
-    const order = Array.from(tabNav.querySelectorAll(".tab-button:not([data-pinned])")).map((btn) => btn.dataset.tab);
-    if (eel.set_tab_order) {
-      const response = await eel.set_tab_order(order)();
-      if (!response.ok) {
-        showToast(response.error || "更新排序失敗。");
-      }
-    }
-  });
-}
 
 if (feeLevelSelect) {
   feeLevelSelect.addEventListener("change", syncFeeGuideFromClass);
@@ -3098,13 +3616,13 @@ if (docxGenerateBtn) {
       return;
     }
     setButtonLoading(docxGenerateBtn, true);
-    const response = await eel.generate_docx(
-      templateName,
-      classId,
-      useRelayPrimary,
-      classIdSecondary,
-      useRelaySecondary
-    )();
+    const response = await invoke('generate_docx', {
+      templateName: templateName,
+      classId: classId,
+      useRelayTeacher: useRelayPrimary,
+      classIdSecondary: classIdSecondary,
+      useRelayTeacherSecondary: useRelaySecondary,
+    });
     setButtonLoading(docxGenerateBtn, false);
     if (!response.ok) {
       showToast(response.error || "生成文件失敗。");
@@ -3228,7 +3746,7 @@ if (saveMessageCategoryBtn) {
     const name = messageCategoryModal.dataset.name || "";
     const category = messageCategoryInput?.value || "";
     if (!name) return;
-    const response = await eel.set_message_category(name, category)();
+    const response = await invoke('set_message_category', { templateName: name, category });
     if (!response.ok) {
       showToast(response.error || "分類儲存失敗。");
       return;
@@ -3347,11 +3865,11 @@ function registerSettingActions(container) {
     const button = event.target.closest("button[data-setting-type]");
     if (!button) return;
     if (button.dataset.delete) {
-      eel.delete_setting(button.dataset.settingType, button.dataset.settingValue)().then(loadState);
+      invoke('delete_setting', { entryType: button.dataset.settingType, value: button.dataset.settingValue }).then(loadState);
       return;
     }
     if (button.dataset.move) {
-      eel.move_setting(button.dataset.settingType, button.dataset.settingValue, button.dataset.move)().then(loadState);
+      invoke('move_setting', { entryType: button.dataset.settingType, value: button.dataset.settingValue, direction: button.dataset.move }).then(loadState);
     }
   });
 }
@@ -3362,7 +3880,7 @@ registerSettingActions(levelList);
 registerSettingActions(timeList);
 
 exportSettingsBtn.addEventListener("click", async () => {
-  const response = await eel.export_settings_csv()();
+  const response = await invoke('export_settings_csv');
   if (!response.ok) {
     showToast(response.error || "匯出失敗。");
     return;
@@ -3382,7 +3900,7 @@ importSettingsInput.addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
   const content = await file.text();
-  const response = await eel.import_settings_csv(content)();
+  const response = await invoke('import_settings_csv', { content });
   if (!response.ok) {
     showToast(response.error || "匯入失敗。");
   } else {
@@ -3402,7 +3920,7 @@ reminderBody.addEventListener("change", (event) => {
   };
   const field = fieldMap[checkbox.dataset.reminder];
   if (!field) return;
-  eel.update_class(checkbox.dataset.id, { [field]: checkbox.checked })().then(loadState);
+  invoke('update_class', { classId: checkbox.dataset.id, updates: { [field]: checkbox.checked } }).then(loadState);
 });
 
 closeScheduleModalBtn.addEventListener("click", closeScheduleModal);
@@ -3414,7 +3932,7 @@ if (postponeAutoWeek && postponeOriginalDate && postponeMakeupDate) {
       return;
     }
     if (!activeClassId || !postponeOriginalDate.value) return;
-    const response = await eel.get_make_up_date(activeClassId, postponeOriginalDate.value)();
+    const response = await invoke('get_make_up_date', { classId: activeClassId, originalDate: postponeOriginalDate.value });
     if (!response.ok) {
       showToast(response.error || "補課日期計算失敗。");
       return;
@@ -3434,7 +3952,7 @@ terminateClassBtn.addEventListener("click", async () => {
   if (!firstConfirm) return;
   const secondConfirm = confirm(`最後一堂日期：${lastDate}\n確認結束？`);
   if (!secondConfirm) return;
-  const response = await eel.terminate_class_with_last_date(activeClassId, lastDate)();
+  const response = await invoke('terminate_class_with_last_date', { classId: activeClassId, lastDate: lastDate });
   if (!response.ok) {
     showToast(response.error || "結束班別失敗。");
     return;
@@ -3452,7 +3970,7 @@ saveClassDetailBtn.addEventListener("click", async () => {
     return;
   }
   setButtonLoading(saveClassDetailBtn, true);
-  const response = await eel.update_class(activeClassId, {
+  const response = await invoke('update_class', { classId: activeClassId, updates: {
     sku: skuValue,
     classroom: detailRoom.value.trim(),
     teacher: detailTeacher.value.trim(),
@@ -3460,7 +3978,7 @@ saveClassDetailBtn.addEventListener("click", async () => {
     relay_teacher: detailRelayTeacher.value.trim(),
     relay_date: detailRelayDate.value,
     student_count: Number(detailStudents.value || 0),
-  })();
+  } });
   setButtonLoading(saveClassDetailBtn, false);
   if (response && response.ok === false) {
     showToast(response.error || "更新失敗。");
@@ -3476,7 +3994,7 @@ if (deleteClassBtn) {
     if (!activeClassId) return;
     const confirmed = confirm("確定要刪除班別？此動作無法復原。");
     if (!confirmed) return;
-    const response = await eel.delete_class(activeClassId)();
+    const response = await invoke('delete_class', { classId: activeClassId });
     if (!response.ok) {
       showToast(response.error || "刪除班別失敗。");
       return;
@@ -3489,7 +4007,7 @@ if (deleteClassBtn) {
 
 addLessonBtn.addEventListener("click", async () => {
   if (!activeClassId || !addLessonDate.value) return;
-  const response = await eel.add_schedule_override(activeClassId, addLessonDate.value, "add")();
+  const response = await invoke('add_schedule_override', { classId: activeClassId, dateStr: addLessonDate.value, action: "add" });
   if (!response.ok) {
     showToast(response.error || "新增失敗。");
     return;
@@ -3499,7 +4017,7 @@ addLessonBtn.addEventListener("click", async () => {
 
 removeLessonBtn.addEventListener("click", async () => {
   if (!activeClassId || !removeLessonDate.value) return;
-  const response = await eel.add_schedule_override(activeClassId, removeLessonDate.value, "remove")();
+  const response = await invoke('add_schedule_override', { classId: activeClassId, dateStr: removeLessonDate.value, action: "remove" });
   if (!response.ok) {
     showToast(response.error || "取消失敗。");
     return;
@@ -3511,14 +4029,14 @@ addPostponeBtn.addEventListener("click", async () => {
   if (!activeClassId) return;
   let response;
   if (postponeAutoWeek && postponeAutoWeek.checked) {
-    response = await eel.add_postpone(activeClassId, postponeOriginalDate.value, postponeReason.value || "")();
+    response = await invoke('add_postpone', { classId: activeClassId, originalDate: postponeOriginalDate.value, reason: postponeReason.value || "" });
   } else {
-    response = await eel.add_postpone_manual(
-      activeClassId,
-      postponeOriginalDate.value,
-      postponeMakeupDate.value,
-      postponeReason.value || ""
-    )();
+    response = await invoke('add_postpone_manual', {
+      classId: activeClassId,
+      originalDate: postponeOriginalDate.value,
+      makeUpDate: postponeMakeupDate.value,
+      reason: postponeReason.value || "",
+    });
   }
   if (!response.ok) {
     showToast(response.error || "新增改期失敗。");
@@ -3534,19 +4052,19 @@ addPostponeBtn.addEventListener("click", async () => {
 postponeList.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-postpone-id]");
   if (!button) return;
-  await eel.delete_postpone(button.dataset.postponeId)();
+  await invoke('delete_postpone', { postponeId: button.dataset.postponeId });
   await openScheduleModal(activeClassId);
 });
 
 overrideList.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-override-id]");
   if (!button) return;
-  await eel.delete_schedule_override(button.dataset.overrideId)();
+  await invoke('delete_schedule_override', { overrideId: button.dataset.overrideId });
   await openScheduleModal(activeClassId);
 });
 
 exportClassesBtn.addEventListener("click", async () => {
-  const response = await eel.export_classes_csv()();
+  const response = await invoke('export_classes_csv');
   if (!response.ok) {
     showToast(response.error || "匯出失敗。");
     return;
@@ -3566,7 +4084,7 @@ importClassesInput.addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
   const content = await file.text();
-  const response = await eel.import_classes_csv(content)();
+  const response = await invoke('import_classes_csv', { content });
   if (!response.ok) {
     showToast(response.error || "匯入失敗。");
   } else {
@@ -3810,7 +4328,7 @@ async function onPromoteTargetChange() {
 
   const target = classes.find(c => c.id === targetId);
 
-  const response = await eel.get_promote_notice_data(targetId)();
+  const response = await invoke('get_promote_notice_data', { classId: targetId });
   if (!response.ok) {
     showToast(response.error || "無法載入班別資料。");
     return;
@@ -3927,7 +4445,7 @@ if (promoteGenerateBtn) {
     };
 
     setButtonLoading(promoteGenerateBtn, true);
-    const response = await eel.generate_promote_notice(data)();
+    const response = await invoke('generate_promote_notice', { data });
     setButtonLoading(promoteGenerateBtn, false);
 
     if (!response.ok) {
@@ -3943,7 +4461,7 @@ if (promoteGenerateBtn) {
 
 if (promoteOpenFolderBtn) {
   promoteOpenFolderBtn.addEventListener("click", async () => {
-    await eel.open_output_folder()();
+    await invoke('open_output_folder');
   });
 }
 
@@ -3972,7 +4490,7 @@ if (promoteResetBtn) {
 
 if (docxOpenFolderBtn) {
   docxOpenFolderBtn.addEventListener("click", async () => {
-    await eel.open_output_folder()();
+    await invoke('open_output_folder');
   });
 }
 
@@ -4045,7 +4563,7 @@ function epsSetDate(dateStr) {
 async function epsInit() {
   if (epsState.loaded) return;
   try {
-    const res = await eel.load_eps_items()();
+    const res = await invoke('load_eps_items');
     if (res && res.ok) {
       epsState.items = res.items;
     }
@@ -4061,7 +4579,7 @@ async function epsInit() {
 
 async function epsLoadRecord(dateStr) {
   try {
-    const res = await eel.load_eps_record(dateStr)();
+    const res = await invoke('load_eps_record', { dateStr: dateStr });
     if (res && res.ok) {
       epsState.records = res.records;
       epsState.audit = res.audit;
@@ -4382,7 +4900,7 @@ if (epsSaveBtn) {
       operator_3_after: epsState.audit.operator_3_after || 0,
     };
     try {
-      const res = await eel.save_eps_record(dateStr, epsState.records, audit)();
+      const res = await invoke('save_eps_record', { dateStr: dateStr, records: epsState.records, audit });
       if (res && res.ok) {
         const msg = res.status === "OK"
           ? `已儲存 (${dateStr}) — OK`
@@ -4405,7 +4923,7 @@ if (epsExportBtn) {
     const dateStr = epsState.currentDate;
     if (!dateStr) return;
     try {
-      const res = await eel.export_eps_csv(dateStr)();
+      const res = await invoke('export_eps_csv', { dateStr: dateStr });
       if (res && res.ok) {
         const blob = new Blob([res.content], { type: "text/html;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
@@ -4433,7 +4951,7 @@ if (epsSetPathBtn) {
   epsSetPathBtn.addEventListener("click", async () => {
     const pathVal = (epsOutputPath?.value || "").trim();
     try {
-      const res = await eel.set_eps_output_path(pathVal)();
+      const res = await invoke('set_eps_output_path', { path: pathVal });
       if (res && res.ok) {
         appState.app_config = appState.app_config || {};
         appState.app_config.eps_output_path = res.eps_output_path;
@@ -4451,7 +4969,7 @@ if (epsSetPathBtn) {
 async function epsLoadHistory() {
   if (!epsHistoryList) return;
   try {
-    const res = await eel.list_eps_dates_endpoint()();
+    const res = await invoke('list_eps_dates_endpoint');
     if (res && res.ok && res.dates) {
       if (res.dates.length === 0) {
         epsHistoryList.innerHTML = `<p class="muted-hint">尚無歷史記錄</p>`;
@@ -4486,18 +5004,6 @@ if (contentEl) {
   epsTabObserver.observe(contentEl, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
 }
 
-loadState().then(() => {
-  try {
-    const savedTab = localStorage.getItem("dij_active_tab");
-    // tasks is now a dropdown, not a tab — never restore it as active tab
-    if (savedTab && savedTab !== "tasks") {
-      const btn = document.querySelector(`.tab-button[data-tab="${savedTab}"]`);
-      if (btn) btn.click();
-    }
-  } catch {}
-});
-loadFeeTemplate();
-loadDocxTemplates();
-loadMessageTemplates();
-loadMakeupTemplate();
+// Startup is now handled by authInit() -> login -> loadState()
+// Only render tasks (local-only, no auth needed)
 renderTasks();

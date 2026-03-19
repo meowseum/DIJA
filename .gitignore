@@ -1,0 +1,6 @@
+src-tauri/target/
+data/
+*.key
+*.key.pub
+*.exe
+dist/
