@@ -201,7 +201,7 @@ body {
 .fab {
   position: fixed;
   right: 24px;
-  bottom: 24px;
+  bottom: 56px; /* sits above the bottom-right user name plate so they don't overlap */
   display: block;
   z-index: 30;
 }
@@ -421,6 +421,197 @@ body {
   margin: 0;
   font-size: 16px;
   color: var(--muted);
+}
+
+/* Settings tab — sidebar navigation layout */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 10px;
+  position: sticky;
+  top: 32px;
+}
+.settings-nav-group {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 16px 10px 6px;
+}
+.settings-nav-group:first-child { margin-top: 4px; }
+.settings-nav-item {
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.settings-nav-item:hover { background: var(--panel-light); }
+.settings-nav-item.active { background: var(--accent); color: #1b1c24; font-weight: 600; }
+.settings-pane {
+  display: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+.settings-pane.active { display: block; }
+.settings-pane > h2 { margin: 0 0 18px; font-size: 20px; }
+.settings-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.settings-pane-head h2 { margin: 0; font-size: 20px; }
+.data-group { margin-bottom: 22px; }
+.data-group h3 { font-size: 15px; color: var(--muted); margin: 0 0 10px; }
+@media (max-width: 760px) {
+  .settings-layout { grid-template-columns: 1fr; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+}
+
+/* Holiday manager — calendar picker + two-pane list */
+.holiday-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.hcal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.hcal-title { font-size: 16px; font-weight: 600; }
+.hcal-nav {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--panel-light);
+  color: var(--text);
+  font-size: 17px;
+  cursor: pointer;
+}
+.hcal-nav:hover { border-color: var(--accent); }
+.hcal-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
+.hcal-dow span { text-align: center; font-size: 12px; color: var(--muted); }
+.hcal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.hcal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--panel-light);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.hcal-day.blank { background: transparent; border: none; cursor: default; }
+.hcal-day:not(.blank):hover { border-color: var(--accent); }
+.hcal-day.is-holiday {
+  background: rgba(255, 85, 85, 0.18);
+  border-color: rgba(255, 85, 85, 0.5);
+  color: #ffd5d5;
+  font-weight: 600;
+}
+.hcal-day.is-sel {
+  background: var(--accent);
+  color: #1b1c24;
+  font-weight: 600;
+  border-color: var(--accent);
+}
+.hcal-hint { font-size: 12px; color: var(--muted); margin: 12px 0 0; }
+.holiday-edit { margin-top: 16px; display: grid; gap: 10px; }
+.he-selected { font-size: 14px; color: var(--accent); font-weight: 600; }
+.holiday-edit input {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  outline: none;
+  font-family: inherit;
+}
+.holiday-edit input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.25); }
+.he-actions { display: flex; gap: 8px; }
+.holiday-list { display: grid; gap: 8px; }
+.hol-year-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.hol-year-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hol-year-chip:hover { border-color: var(--accent); }
+.hol-year-chip.active { background: var(--accent); color: #1b1c24; border-color: var(--accent); }
+.hol-year-chip-count {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.hol-year-chip.active .hol-year-chip-count { background: rgba(0, 0, 0, 0.22); }
+.hol-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 11px 14px;
+  flex-wrap: wrap;
+}
+.hol-row.editing { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(189, 147, 249, 0.2); }
+.hol-info { display: flex; flex-direction: column; gap: 2px; }
+.hol-date { font-size: 16px; font-weight: 600; }
+.hol-name { font-size: 13px; color: var(--accent); }
+.hol-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.hol-span { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.hol-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 85, 85, 0.1);
+  border: 1px solid rgba(255, 85, 85, 0.4);
+  border-radius: 9px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #ffb8b8;
+}
+@media (max-width: 760px) {
+  .holiday-shell { grid-template-columns: 1fr; }
 }
 
 .fee-guide-grid {
@@ -2432,17 +2623,26 @@ input.eps-custom-qty:focus {
   position: fixed;
   bottom: 0;
   right: 0;
+  z-index: 100;
+}
+.user-menu-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   background: var(--panel);
   border-top: 1px solid var(--border);
   border-left: 1px solid var(--border);
+  border-right: none;
+  border-bottom: none;
   border-radius: 8px 0 0 0;
-  z-index: 100;
+  color: var(--text);
+  font-family: inherit;
   font-size: 13px;
+  cursor: pointer;
 }
+.user-menu-trigger:hover { background: var(--panel-light); }
+.user-menu-caret { color: var(--muted); font-size: 10px; }
 .user-display-name { color: var(--text); font-weight: 500; }
 .user-role-badge {
   background: var(--accent);
@@ -2453,7 +2653,78 @@ input.eps-custom-qty:focus {
   font-weight: 600;
   text-transform: uppercase;
 }
+.user-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+.user-menu.hidden { display: none; }
+.user-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.user-menu-item:hover { background: var(--panel-light); }
+.user-menu-item.danger { color: var(--danger); }
+.user-menu-item.danger:hover { background: rgba(255, 85, 85, 0.14); }
 .btn-sm { padding: 3px 10px; font-size: 12px; }
+
+/* Change-password + confirm + makeup-suggest modals */
+.pw-modal, .confirm-modal { width: min(420px, 100%); }
+.makeup-suggest-modal { width: min(580px, 100%); }
+.pw-form { display: grid; gap: 16px; }
+.pw-form > label {
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 14px; color: var(--muted);
+}
+.pw-input { display: flex; gap: 8px; align-items: stretch; }
+.pw-input input { flex: 1; font-size: 18px; letter-spacing: 0.25em; }
+.pw-toggle {
+  background: var(--panel-light);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pw-toggle:hover { color: var(--text); }
+.pw-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  background: rgba(255, 85, 85, 0.1);
+  border: 1px solid rgba(255, 85, 85, 0.35);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.pw-error.hidden { display: none; }
+.confirm-text { font-size: 16px; color: var(--text); margin: 4px 0 24px; }
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions .btn { flex: 1; }
+
+/* Name + price rows (textbook / tuition lists): align the price column */
+.list-item .li-name { flex: 1; min-width: 0; }
+.list-item .li-price { min-width: 72px; text-align: right; color: var(--muted); margin-right: 12px; }
 
 /* ============================================
    ADMIN PANEL

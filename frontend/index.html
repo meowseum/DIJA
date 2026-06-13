@@ -312,34 +312,6 @@
             </form>
           </div>
 
-          <div class="card card-collapsible collapsed">
-            <div class="card-header">
-              <h2>假期</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form id="holidayForm" class="form">
-              <label>
-                開始日期
-                <input type="date" id="holidayStartDate" name="start_date" required />
-              </label>
-              <div class="field-inline">
-                <label>
-                  結束日期
-                  <input type="date" id="holidayEndDate" name="end_date" required />
-                </label>
-                <label class="checkbox-inline">
-                  <input type="checkbox" id="holidayOneDay" />
-                  一日
-                </label>
-              </div>
-              <label>
-                名稱
-                <input type="text" name="name" placeholder="中期假" />
-              </label>
-              <button class="btn primary" type="submit">新增假期</button>
-            </form>
-            <div id="holidayList" class="list"></div>
-          </div>
         </section>
 
         <section class="card">
@@ -451,262 +423,249 @@
       </section>
 
         <section class="tab-content" data-tab-content="settings">
-        <section class="settings-group">
-          <div class="settings-group-header">
-            <h2>班別與人員</h2>
-          </div>
-          <div class="grid">
-          <div class="card card-collapsible collapsed" data-collapsible="teacher">
-            <div class="card-header">
+        <div class="settings-layout">
+          <nav class="settings-nav" id="settingsNav">
+            <div class="settings-nav-group">班別與人員</div>
+            <button class="settings-nav-item active" type="button" data-pane="teacher">導師</button>
+            <button class="settings-nav-item" type="button" data-pane="room">課室</button>
+            <button class="settings-nav-item" type="button" data-pane="level">等級</button>
+            <button class="settings-nav-item" type="button" data-pane="time">時間</button>
+            <div class="settings-nav-group">學費與教材</div>
+            <button class="settings-nav-item" type="button" data-pane="price">班別學費</button>
+            <button class="settings-nav-item" type="button" data-pane="textbook-list">教材清單</button>
+            <button class="settings-nav-item" type="button" data-pane="level-textbook">等級對應</button>
+            <div class="settings-nav-group">EPS 設定</div>
+            <button class="settings-nav-item" type="button" data-pane="eps-config">價格參數</button>
+            <button class="settings-nav-item" type="button" data-pane="eps-book">EPS 書簿</button>
+            <button class="settings-nav-item" type="button" data-pane="eps-other">EPS 其他</button>
+            <button class="settings-nav-item" type="button" data-pane="eps-special">EPS 特別班</button>
+            <div class="settings-nav-group">行事曆</div>
+            <button class="settings-nav-item" type="button" data-pane="holiday">假期</button>
+            <div class="settings-nav-group">資料</div>
+            <button class="settings-nav-item" type="button" data-pane="data">匯入 / 匯出</button>
+          </nav>
+
+          <div class="settings-panes">
+            <section class="settings-pane active" data-pane="teacher">
               <h2>導師</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form class="form settings-form" data-setting-type="teacher">
-              <label>
-                新增導師
-                <input type="text" name="value" placeholder="陳老師" />
-              </label>
-              <button class="btn primary" type="submit">新增</button>
-            </form>
-            <label class="filter-label">
-              篩選
-              <select id="teacherGenderFilter">
-                <option value="">全部</option>
-                <option value="male">先生</option>
-                <option value="female">小姐</option>
-              </select>
-            </label>
-            <div class="list" id="teacherList"></div>
-          </div>
-
-          <div class="card card-collapsible collapsed" data-collapsible="room">
-            <div class="card-header">
-              <h2>課室</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form class="form settings-form" data-setting-type="room">
-              <label>
-                新增課室
-                <input type="text" name="value" placeholder="2A" />
-              </label>
-              <button class="btn primary" type="submit">新增</button>
-            </form>
-            <div class="list" id="roomList"></div>
-          </div>
-
-          <div class="card card-collapsible collapsed" data-collapsible="level">
-            <div class="card-header">
-              <h2>等級</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form class="form settings-form" data-setting-type="level">
-              <label>
-                新增等級
-                <input type="text" name="value" placeholder="初級" />
-              </label>
-              <button class="btn primary" type="submit">新增</button>
-            </form>
-            <div class="list" id="levelList"></div>
-          </div>
-
-          <div class="card card-collapsible collapsed" data-collapsible="time">
-            <div class="card-header">
-              <h2>時間</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form class="form settings-form" data-setting-type="time">
-              <label>
-                新增時間
-                <input type="text" name="value" placeholder="10:00" />
-              </label>
-              <button class="btn primary" type="submit">新增</button>
-            </form>
-            <div class="list" id="timeList"></div>
-          </div>
-          </div>
-        </section>
-
-        <section class="settings-group">
-          <div class="settings-group-header">
-            <h2>學費與匯入</h2>
-          </div>
-          <div class="grid">
-
-          <div class="card card-collapsible collapsed" data-collapsible="price">
-            <div class="card-header">
-              <h2>班別學費</h2>
-              <div class="action-group">
-                <button id="priceAdjustMinus" class="btn secondary" type="button">－20</button>
-                <button id="priceAdjustPlus" class="btn secondary" type="button">＋20</button>
-                <button class="btn secondary collapse-toggle" type="button">展開</button>
-              </div>
-            </div>
-            <form id="priceForm" class="form">
-              <label>
-                等級
-                <select id="priceLevelSelect">
-                  <option value="">請選擇</option>
+              <form class="form settings-form" data-setting-type="teacher">
+                <label>
+                  新增導師
+                  <input type="text" name="value" placeholder="陳老師" />
+                </label>
+                <button class="btn primary" type="submit">新增</button>
+              </form>
+              <label class="filter-label">
+                篩選
+                <select id="teacherGenderFilter">
+                  <option value="">全部</option>
+                  <option value="male">先生</option>
+                  <option value="female">小姐</option>
                 </select>
               </label>
-              <label>
-                學費
-                <input type="number" id="priceValueInput" min="0" placeholder="630" />
-              </label>
-              <button class="btn primary" type="submit">設定學費</button>
-            </form>
-            <div class="list" id="priceList"></div>
-          </div>
+              <div class="list" id="teacherList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="export">
-            <div class="card-header">
-              <h2>匯入 / 匯出</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form">
-              <button id="exportSettingsBtn" class="btn secondary" type="button">匯出設定</button>
-              <label>
-                匯入設定
-                <input id="importSettingsInput" type="file" accept=".csv" />
-              </label>
-            </div>
-          </div>
+            <section class="settings-pane" data-pane="room">
+              <h2>課室</h2>
+              <form class="form settings-form" data-setting-type="room">
+                <label>
+                  新增課室
+                  <input type="text" name="value" placeholder="2A" />
+                </label>
+                <button class="btn primary" type="submit">新增</button>
+              </form>
+              <div class="list" id="roomList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="class-data">
-            <div class="card-header">
-              <h2>班別資料</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form">
-              <button id="exportClassesBtn" class="btn secondary" type="button">匯出班別</button>
-              <label>
-                匯入班別
-                <input id="importClassesInput" type="file" accept=".csv" />
-              </label>
-            </div>
-          </div>
-          </div>
-        </section>
+            <section class="settings-pane" data-pane="level">
+              <h2>等級</h2>
+              <form class="form settings-form" data-setting-type="level">
+                <label>
+                  新增等級
+                  <input type="text" name="value" placeholder="初級" />
+                </label>
+                <button class="btn primary" type="submit">新增</button>
+              </form>
+              <div class="list" id="levelList"></div>
+            </section>
 
-        <section class="settings-group">
-          <div class="settings-group-header">
-            <h2>教材管理</h2>
-          </div>
-          <div class="grid">
+            <section class="settings-pane" data-pane="time">
+              <h2>時間</h2>
+              <form class="form settings-form" data-setting-type="time">
+                <label>
+                  新增時間
+                  <input type="text" name="value" placeholder="10:00" />
+                </label>
+                <button class="btn primary" type="submit">新增</button>
+              </form>
+              <div class="list" id="timeList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="textbook-list">
-            <div class="card-header">
+            <section class="settings-pane" data-pane="price">
+              <div class="settings-pane-head">
+                <h2>班別學費</h2>
+                <div class="action-group">
+                  <button id="priceAdjustMinus" class="btn secondary" type="button">－20</button>
+                  <button id="priceAdjustPlus" class="btn secondary" type="button">＋20</button>
+                </div>
+              </div>
+              <form id="priceForm" class="form">
+                <label>
+                  等級
+                  <select id="priceLevelSelect">
+                    <option value="">請選擇</option>
+                  </select>
+                </label>
+                <label>
+                  學費
+                  <input type="number" id="priceValueInput" min="0" placeholder="630" />
+                </label>
+                <button class="btn primary" type="submit">設定學費</button>
+              </form>
+              <div class="list" id="priceList"></div>
+            </section>
+
+            <section class="settings-pane" data-pane="textbook-list">
               <h2>教材清單</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <form id="textbookForm" class="form">
-              <label>
-                教材名稱
-                <input type="text" id="textbookNameInput" placeholder="初級課本" />
-              </label>
-              <label>
-                價格 ($)
-                <input type="number" id="textbookPriceInput" min="0" placeholder="180" />
-              </label>
-              <button class="btn primary" type="submit">新增 / 更新</button>
-            </form>
-            <div class="list" id="textbookList"></div>
-          </div>
+              <form id="textbookForm" class="form">
+                <label>
+                  教材名稱
+                  <input type="text" id="textbookNameInput" placeholder="初級課本" />
+                </label>
+                <label>
+                  價格 ($)
+                  <input type="number" id="textbookPriceInput" min="0" placeholder="180" />
+                </label>
+                <button class="btn primary" type="submit">新增 / 更新</button>
+              </form>
+              <div class="list" id="textbookList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="level-textbook">
-            <div class="card-header">
+            <section class="settings-pane" data-pane="level-textbook">
               <h2>等級對應</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <p class="muted-hint">為每個等級設定所用教材及下一等級，以便自動計算書簿費及升班預測。</p>
-            <div id="levelTextbookList"></div>
-          </div>
+              <p class="muted-hint">為每個等級設定所用教材及下一等級，以便自動計算書簿費及升班預測。</p>
+              <div id="levelTextbookList"></div>
+            </section>
 
-          </div>
-        </section>
+            <section class="settings-pane" data-pane="eps-config">
+              <h2>EPS 價格參數</h2>
+              <div class="form">
+                <label>
+                  每年價格差額 ($)
+                  <input type="number" id="epsConfigDelta" min="0" value="20" />
+                </label>
+                <label>
+                  密集班倍數
+                  <input type="number" id="epsConfigMultiplier" step="0.1" min="1" value="1.5" />
+                </label>
+                <button id="epsConfigSaveBtn" class="btn primary" type="button">儲存</button>
+              </div>
+            </section>
 
-        <section class="settings-group">
-          <div class="settings-group-header">
-            <h2>EPS 設定</h2>
-          </div>
-          <div class="grid">
-
-          <div class="card card-collapsible collapsed" data-collapsible="eps-config">
-            <div class="card-header">
-              <h2>價格參數</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form">
-              <label>
-                每年價格差額 ($)
-                <input type="number" id="epsConfigDelta" min="0" value="20" />
-              </label>
-              <label>
-                密集班倍數
-                <input type="number" id="epsConfigMultiplier" step="0.1" min="1" value="1.5" />
-              </label>
-              <button id="epsConfigSaveBtn" class="btn primary" type="button">儲存</button>
-            </div>
-          </div>
-
-          <div class="card card-collapsible collapsed" data-collapsible="eps-book-list">
-            <div class="card-header">
+            <section class="settings-pane" data-pane="eps-book">
               <h2>EPS 書簿項目</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form eps-item-form" data-eps-type="eps_book">
-              <label>
-                名稱
-                <input type="text" class="eps-item-name-input" placeholder="新 DIJ (一) 書" />
-              </label>
-              <label>
-                價格 ($)
-                <input type="number" class="eps-item-price-input" min="0" placeholder="100" />
-              </label>
-              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
-            </div>
-            <div class="list" id="epsBookList"></div>
-          </div>
+              <div class="form eps-item-form" data-eps-type="eps_book">
+                <label>
+                  名稱
+                  <input type="text" class="eps-item-name-input" placeholder="新 DIJ (一) 書" />
+                </label>
+                <label>
+                  價格 ($)
+                  <input type="number" class="eps-item-price-input" min="0" placeholder="100" />
+                </label>
+                <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+              </div>
+              <div class="list" id="epsBookList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="eps-other-list">
-            <div class="card-header">
+            <section class="settings-pane" data-pane="eps-other">
               <h2>EPS 其他項目</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form eps-item-form" data-eps-type="eps_other">
-              <label>
-                名稱
-                <input type="text" class="eps-item-name-input" placeholder="學生証" />
-              </label>
-              <label>
-                價格 ($)
-                <input type="number" class="eps-item-price-input" min="0" placeholder="50" />
-              </label>
-              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
-            </div>
-            <div class="list" id="epsOtherList"></div>
-          </div>
+              <div class="form eps-item-form" data-eps-type="eps_other">
+                <label>
+                  名稱
+                  <input type="text" class="eps-item-name-input" placeholder="學生証" />
+                </label>
+                <label>
+                  價格 ($)
+                  <input type="number" class="eps-item-price-input" min="0" placeholder="50" />
+                </label>
+                <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+              </div>
+              <div class="list" id="epsOtherList"></div>
+            </section>
 
-          <div class="card card-collapsible collapsed" data-collapsible="eps-special-list">
-            <div class="card-header">
+            <section class="settings-pane" data-pane="eps-special">
               <h2>EPS 特別班項目</h2>
-              <button class="btn secondary collapse-toggle" type="button">展開</button>
-            </div>
-            <div class="form eps-item-form" data-eps-type="eps_special">
-              <label>
-                名稱
-                <input type="text" class="eps-item-name-input" placeholder="會話班" />
-              </label>
-              <label>
-                價格 ($)
-                <input type="number" class="eps-item-price-input" min="0" placeholder="870" />
-              </label>
-              <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
-            </div>
-            <div class="list" id="epsSpecialList"></div>
-          </div>
+              <div class="form eps-item-form" data-eps-type="eps_special">
+                <label>
+                  名稱
+                  <input type="text" class="eps-item-name-input" placeholder="會話班" />
+                </label>
+                <label>
+                  價格 ($)
+                  <input type="number" class="eps-item-price-input" min="0" placeholder="870" />
+                </label>
+                <button class="btn primary eps-item-add-btn" type="button">新增 / 更新</button>
+              </div>
+              <div class="list" id="epsSpecialList"></div>
+            </section>
 
+            <section class="settings-pane" data-pane="holiday">
+              <h2>假期</h2>
+              <div class="holiday-shell">
+                <div class="holiday-left">
+                  <div class="hcal-head">
+                    <button class="hcal-nav" id="holPrevMonth" type="button" aria-label="上個月">‹</button>
+                    <span id="holCalTitle" class="hcal-title"></span>
+                    <button class="hcal-nav" id="holNextMonth" type="button" aria-label="下個月">›</button>
+                  </div>
+                  <div class="hcal-dow">
+                    <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+                  </div>
+                  <div class="hcal-grid" id="holCalGrid"></div>
+                  <p class="hcal-hint">點選日子＝單日；再點另一日＝整段假期。紅色為已設假期。</p>
+                  <div class="holiday-edit">
+                    <div class="he-selected" id="holSelectedLabel">尚未選擇日期</div>
+                    <input type="text" id="holNameInput" placeholder="假期名稱（例：農曆新年）" />
+                    <div class="he-actions">
+                      <button class="btn primary" id="holSaveBtn" type="button">新增假期</button>
+                      <button class="btn secondary hidden" id="holCancelBtn" type="button">取消編輯</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="holiday-right">
+                  <div id="holYearChips" class="hol-year-chips"></div>
+                  <div id="holidayList" class="holiday-list"></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-pane" data-pane="data">
+              <h2>匯入 / 匯出</h2>
+              <div class="data-group">
+                <h3>設定</h3>
+                <div class="form">
+                  <button id="exportSettingsBtn" class="btn secondary" type="button">匯出設定</button>
+                  <label>
+                    匯入設定
+                    <input id="importSettingsInput" type="file" accept=".csv" />
+                  </label>
+                </div>
+              </div>
+              <div class="data-group">
+                <h3>班別資料</h3>
+                <div class="form">
+                  <button id="exportClassesBtn" class="btn secondary" type="button">匯出班別</button>
+                  <label>
+                    匯入班別
+                    <input id="importClassesInput" type="file" accept=".csv" />
+                  </label>
+                </div>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
         </section>
 
         <section class="tab-content" data-tab-content="fee-guide">
@@ -889,7 +848,10 @@
           <div class="card">
             <div class="card-header">
               <h2>補課安排</h2>
-              <button id="makeupResetBtn" class="btn secondary" type="button">重設</button>
+              <div class="action-group">
+                <button id="openMakeupSuggestBtn" class="btn secondary" type="button">補課建議</button>
+                <button id="makeupResetBtn" class="btn secondary" type="button">重設</button>
+              </div>
             </div>
             <form id="makeupForm" class="form">
               <div class="form-header">
@@ -1210,12 +1172,92 @@
         </section>
       </main>
 
-      <!-- User Info Bar -->
+      <!-- User menu (bottom-right) -->
       <div id="userInfoBar" class="user-info-bar">
-        <span id="userDisplayName" class="user-display-name"></span>
-        <span id="userRole" class="user-role-badge"></span>
-        <button id="changePasswordBtn" class="btn secondary btn-sm" type="button">改密碼</button>
-        <button id="logoutBtn" class="btn secondary btn-sm" type="button">登出</button>
+        <button id="userMenuTrigger" class="user-menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+          <span id="userDisplayName" class="user-display-name"></span>
+          <span id="userRole" class="user-role-badge"></span>
+          <span class="user-menu-caret" aria-hidden="true">▾</span>
+        </button>
+        <div id="userMenu" class="user-menu hidden" role="menu">
+          <button id="changePasswordBtn" class="user-menu-item" type="button" role="menuitem">更改密碼</button>
+          <button id="logoutBtn" class="user-menu-item danger" type="button" role="menuitem">登出</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal hidden">
+      <div class="modal-content pw-modal">
+        <div class="modal-header">
+          <h2>更改密碼</h2>
+          <button id="closeChangePassword" class="btn secondary" type="button">關閉</button>
+        </div>
+        <div class="modal-section">
+          <div class="pw-form">
+            <label>目前密碼
+              <div class="pw-input">
+                <input type="password" id="pwCurrent" inputmode="numeric" maxlength="4" autocomplete="current-password" />
+                <button type="button" class="pw-toggle" data-target="pwCurrent">顯示</button>
+              </div>
+            </label>
+            <label>新密碼（4 位數字）
+              <div class="pw-input">
+                <input type="password" id="pwNew" inputmode="numeric" maxlength="4" autocomplete="new-password" />
+                <button type="button" class="pw-toggle" data-target="pwNew">顯示</button>
+              </div>
+            </label>
+            <label>確認新密碼
+              <div class="pw-input">
+                <input type="password" id="pwConfirm" inputmode="numeric" maxlength="4" autocomplete="new-password" />
+                <button type="button" class="pw-toggle" data-target="pwConfirm">顯示</button>
+              </div>
+            </label>
+            <p id="pwError" class="pw-error hidden"></p>
+            <button id="pwSubmit" class="btn primary" type="button">更新密碼</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 補課建議 Modal -->
+    <div id="makeupSuggestModal" class="modal hidden">
+      <div class="modal-content makeup-suggest-modal">
+        <div class="modal-header">
+          <h2>補課建議</h2>
+          <button id="closeMakeupSuggest" class="btn secondary" type="button">關閉</button>
+        </div>
+        <div class="modal-section">
+          <p class="muted-hint">選擇學生原本就讀的班別及缺席日期，下方會列出進度相近、可作補課的同級班別。</p>
+          <div class="modal-grid">
+            <label>
+              學生原班
+              <select id="makeupSuggestClass">
+                <option value="">請選擇班別</option>
+              </select>
+            </label>
+            <label>
+              缺席日期
+              <input type="date" id="makeupSuggestDate" />
+            </label>
+          </div>
+          <button id="runMakeupSuggestBtn" class="btn primary" type="button">尋找相近班別</button>
+          <div class="list" id="makeupSuggestList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logout Confirmation Modal -->
+    <div id="logoutConfirmModal" class="modal hidden">
+      <div class="modal-content confirm-modal">
+        <div class="modal-header">
+          <h2>登出</h2>
+        </div>
+        <p class="confirm-text">確定要登出嗎？</p>
+        <div class="confirm-actions">
+          <button id="logoutCancel" class="btn secondary" type="button">取消</button>
+          <button id="logoutConfirm" class="btn danger" type="button">登出</button>
+        </div>
       </div>
     </div>
 

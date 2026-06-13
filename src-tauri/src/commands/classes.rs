@@ -43,10 +43,18 @@ fn make_up_date_for(
     scheduled.remove(&original_date);
     let holidays_set = holiday_set(holidays);
 
-    let mut candidate = original_date + chrono::Duration::days(7);
-    if scheduled.contains(&candidate) || holidays_set.contains(&candidate) {
-        candidate = find_next_available_weekly(candidate, class_record.weekday as u32, &scheduled, &holidays_set);
-    }
+    // Always append the make-up lesson AFTER the course's current last lesson, so a
+    // postponed lesson extends the course end instead of taking over an interior
+    // "next week" slot (which made the course look like it lost a lesson). The anchor
+    // is the later of the last scheduled date and the original date; find_next_available_weekly
+    // then steps to the next weekday and skips any holiday / already-scheduled date.
+    let anchor = scheduled
+        .iter()
+        .max()
+        .copied()
+        .unwrap_or(original_date)
+        .max(original_date);
+    let candidate = find_next_available_weekly(anchor, class_record.weekday as u32, &scheduled, &holidays_set);
     candidate.format("%Y-%m-%d").to_string()
 }
 
@@ -502,4 +510,81 @@ pub fn make_up_date_for_pub(
     original_date: chrono::NaiveDate,
 ) -> String {
     make_up_date_for(class_record, holidays, postpones, overrides, original_date)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{ClassRecord, PostponeRecord};
+
+    // Minimal 10-lesson weekly Monday class starting 2026-01-05 (lessons run to 2026-03-09).
+    fn weekly_class(start_date: &str, weekday: i64, lesson_total: i64) -> ClassRecord {
+        ClassRecord {
+            id: "test".into(),
+            sku: String::new(),
+            level: String::new(),
+            location: String::new(),
+            start_month: 0,
+            class_letter: String::new(),
+            start_year: 0,
+            classroom: String::new(),
+            start_date: start_date.into(),
+            weekday,
+            start_time: String::new(),
+            teacher: String::new(),
+            relay_teacher: String::new(),
+            relay_date: String::new(),
+            student_count: 0,
+            lesson_total,
+            status: "active".into(),
+            doorplate_done: false,
+            questionnaire_done: false,
+            intro_done: false,
+            merged_into_id: String::new(),
+            promoted_to_id: String::new(),
+            notes: String::new(),
+        }
+    }
+
+    fn d(s: &str) -> chrono::NaiveDate {
+        parse_date(s).unwrap()
+    }
+
+    #[test]
+    fn make_up_appends_after_course_end_not_next_week() {
+        let class = weekly_class("2026-01-05", 0, 10); // ends 2026-03-09
+        // Postponing the first lesson must land AFTER the last lesson, not on next week.
+        let mu = make_up_date_for(&class, &[], &[], &[], d("2026-01-05"));
+        assert_eq!(mu, "2026-03-16");
+        // A middle lesson must also append at the end.
+        let mu_mid = make_up_date_for(&class, &[], &[], &[], d("2026-01-26"));
+        assert_eq!(mu_mid, "2026-03-16");
+    }
+
+    #[test]
+    fn chained_postpones_stack_after_end_and_preserve_count() {
+        let class = weekly_class("2026-01-05", 0, 10);
+        // First postpone L5 -> 2026-03-16 (end).
+        let pp1 = PostponeRecord {
+            id: "1".into(),
+            class_id: "test".into(),
+            original_date: "2026-02-02".into(), // L5
+            reason: String::new(),
+            make_up_date: "2026-03-16".into(),
+        };
+        // Now postpone L4: must go AFTER 03-16, i.e. 03-23 (no interior "next week" reuse).
+        let mu = make_up_date_for(&class, &[], std::slice::from_ref(&pp1), &[], d("2026-01-26"));
+        assert_eq!(mu, "2026-03-23");
+
+        // Count is preserved across both postpones.
+        let pp2 = PostponeRecord {
+            id: "2".into(),
+            class_id: "test".into(),
+            original_date: "2026-01-26".into(),
+            reason: String::new(),
+            make_up_date: "2026-03-23".into(),
+        };
+        let sched = build_schedule_with_index(&class, &[], &[pp1, pp2], &[]);
+        assert_eq!(sched.len(), 10);
+    }
 }

@@ -62,14 +62,16 @@ fn main() {
             commands::classes::save_student_counts,
             commands::classes::terminate_class_with_last_date,
             commands::classes::get_class_schedule,
-            // Holidays (2)
+            // Holidays (3)
             commands::holidays::add_holiday,
+            commands::holidays::update_holiday,
             commands::holidays::delete_holiday,
-            // Postpones (4)
+            // Postpones (5)
             commands::postpones::add_postpone,
             commands::postpones::add_postpone_manual,
             commands::postpones::get_make_up_date,
             commands::postpones::delete_postpone,
+            commands::postpones::suggest_makeup_classes,
             // Overrides (2)
             commands::overrides::add_schedule_override,
             commands::overrides::delete_schedule_override,

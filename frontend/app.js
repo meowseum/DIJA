@@ -318,21 +318,91 @@ document.getElementById('sessionExpiredForm').addEventListener('submit', async (
 });
 document.getElementById('sessionExpiredLogout').addEventListener('click', () => doLogout(true));
 
-// --- Logout button ---
-document.getElementById('logoutBtn').addEventListener('click', () => doLogout(false));
+// --- User menu dropdown ---
+const userMenuTrigger = document.getElementById('userMenuTrigger');
+const userMenu = document.getElementById('userMenu');
+function closeUserMenu() {
+  userMenu.classList.add('hidden');
+  userMenuTrigger.setAttribute('aria-expanded', 'false');
+}
+userMenuTrigger.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = !userMenu.classList.contains('hidden');
+  if (isOpen) { closeUserMenu(); }
+  else { userMenu.classList.remove('hidden'); userMenuTrigger.setAttribute('aria-expanded', 'true'); }
+});
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('userInfoBar').contains(e.target)) closeUserMenu();
+});
 
-// --- Change password ---
-document.getElementById('changePasswordBtn').addEventListener('click', async () => {
-  const oldPw = prompt('請輸入目前密碼：');
-  if (!oldPw) return;
-  const newPw = prompt('請輸入新密碼（4 位數字）：');
-  if (!newPw) return;
-  const confirmPw = prompt('請再次輸入新密碼：');
-  if (newPw !== confirmPw) { alert('密碼不一致。'); return; }
+// --- Logout (with confirmation) ---
+const logoutConfirmModal = document.getElementById('logoutConfirmModal');
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  closeUserMenu();
+  logoutConfirmModal.classList.remove('hidden');
+});
+document.getElementById('logoutCancel').addEventListener('click', () => logoutConfirmModal.classList.add('hidden'));
+document.getElementById('logoutConfirm').addEventListener('click', () => {
+  logoutConfirmModal.classList.add('hidden');
+  doLogout(false);
+});
+
+// --- Change password (masked modal) ---
+const changePasswordModal = document.getElementById('changePasswordModal');
+const pwCurrent = document.getElementById('pwCurrent');
+const pwNew = document.getElementById('pwNew');
+const pwConfirm = document.getElementById('pwConfirm');
+const pwError = document.getElementById('pwError');
+
+function showPwError(msg) { pwError.textContent = msg; pwError.classList.remove('hidden'); }
+function clearPwError() { pwError.textContent = ''; pwError.classList.add('hidden'); }
+function resetPwModal() {
+  pwCurrent.value = ''; pwNew.value = ''; pwConfirm.value = '';
+  clearPwError();
+  document.querySelectorAll('#changePasswordModal .pw-toggle').forEach((b) => {
+    b.textContent = '顯示';
+    const inp = document.getElementById(b.dataset.target);
+    if (inp) inp.type = 'password';
+  });
+}
+function closeChangePasswordModal() { changePasswordModal.classList.add('hidden'); resetPwModal(); }
+
+document.getElementById('changePasswordBtn').addEventListener('click', () => {
+  closeUserMenu();
+  resetPwModal();
+  changePasswordModal.classList.remove('hidden');
+  pwCurrent.focus();
+});
+document.getElementById('closeChangePassword').addEventListener('click', closeChangePasswordModal);
+
+document.querySelectorAll('#changePasswordModal .pw-toggle').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const inp = document.getElementById(btn.dataset.target);
+    if (!inp) return;
+    const masked = inp.type === 'password';
+    inp.type = masked ? 'text' : 'password';
+    btn.textContent = masked ? '隱藏' : '顯示';
+  });
+});
+[pwCurrent, pwNew, pwConfirm].forEach((inp) => inp.addEventListener('input', clearPwError));
+
+document.getElementById('pwSubmit').addEventListener('click', async () => {
+  const oldPw = pwCurrent.value;
+  const newPw = pwNew.value;
+  const confirmPw = pwConfirm.value;
+  if (!oldPw) { showPwError('請輸入目前密碼。'); return; }
+  if (!/^\d{4}$/.test(newPw)) { showPwError('新密碼必須為 4 位數字。'); return; }
+  if (newPw !== confirmPw) { showPwError('兩次輸入的新密碼不一致。'); return; }
+  if (newPw === oldPw) { showPwError('新密碼不能與目前密碼相同。'); return; }
   try {
     const r = await invoke('change_password', { oldPassword: oldPw, newPassword: newPw });
-    alert(r.ok ? '密碼已更新。' : (r.error || '更新失敗。'));
-  } catch (err) { alert('錯誤: ' + err.message); }
+    if (r.ok) {
+      closeChangePasswordModal();
+      showToast('密碼已更新。', 'success');
+    } else {
+      showPwError(r.error || '更新失敗。');
+    }
+  } catch (err) { showPwError('錯誤: ' + err.message); }
 });
 
 // --- App init: check setup then show login ---
@@ -1037,9 +1107,256 @@ function validateClassForm(form) {
 const exportSettingsBtn = document.getElementById("exportSettingsBtn");
 const importSettingsInput = document.getElementById("importSettingsInput");
 const teacherGenderFilter = document.getElementById("teacherGenderFilter");
-const holidayStartDate = document.getElementById("holidayStartDate");
-const holidayEndDate = document.getElementById("holidayEndDate");
-const holidayOneDay = document.getElementById("holidayOneDay");
+// ===== Holiday manager: calendar picker + editable list (in Settings tab) =====
+const holCalGrid = document.getElementById("holCalGrid");
+const holCalTitle = document.getElementById("holCalTitle");
+const holSelectedLabel = document.getElementById("holSelectedLabel");
+const holNameInput = document.getElementById("holNameInput");
+const holSaveBtn = document.getElementById("holSaveBtn");
+const holCancelBtn = document.getElementById("holCancelBtn");
+const holYearChips = document.getElementById("holYearChips");
+const holState = { year: null, month: null, selStart: null, selEnd: null, editId: null };
+let holViewYear = null; // currently selected year (string) for the list view
+
+function holToday() { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate()); }
+function holIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function holParse(s) {
+  const p = (s || "").split("-");
+  if (p.length !== 3) return null;
+  const d = new Date(+p[0], +p[1] - 1, +p[2]);
+  return isNaN(d.getTime()) ? null : d;
+}
+function holFmtRange(a, b) {
+  if (!b || holIso(a) === holIso(b)) return `${a.getMonth() + 1}月${a.getDate()}日`;
+  if (a.getMonth() === b.getMonth()) return `${a.getMonth() + 1}月${a.getDate()}–${b.getDate()}日`;
+  return `${a.getMonth() + 1}月${a.getDate()}日 → ${b.getMonth() + 1}月${b.getDate()}日`;
+}
+function holSpan(a, b) { return Math.round((b - a) / 86400000) + 1; }
+
+function holidayDateSet() {
+  const set = new Set();
+  (appState.holidays || []).forEach((h) => {
+    let s = holParse(h.start_date);
+    let e = holParse(h.end_date) || s;
+    if (!s) return;
+    if (e < s) { const t = s; s = e; e = t; }
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) set.add(holIso(d));
+  });
+  return set;
+}
+
+function renderHolCalendar() {
+  if (!holCalGrid) return;
+  if (holState.year == null) { const t = holToday(); holState.year = t.getFullYear(); holState.month = t.getMonth(); }
+  holCalTitle.textContent = `${holState.year} 年 ${holState.month + 1} 月`;
+  const first = new Date(holState.year, holState.month, 1);
+  const lead = (first.getDay() + 6) % 7; // Monday-first
+  const daysInMonth = new Date(holState.year, holState.month + 1, 0).getDate();
+  const holSet = holidayDateSet();
+  let sa = holState.selStart, sb = holState.selEnd || holState.selStart;
+  if (sa && sb && sb < sa) { const t = sa; sa = sb; sb = t; }
+  holCalGrid.innerHTML = "";
+  for (let i = 0; i < lead; i++) {
+    const b = document.createElement("div");
+    b.className = "hcal-day blank";
+    holCalGrid.appendChild(b);
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(holState.year, holState.month, day);
+    const iso = holIso(d);
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "hcal-day";
+    cell.textContent = day;
+    if (holSet.has(iso)) cell.classList.add("is-holiday");
+    if (sa && sb && d >= sa && d <= sb) {
+      cell.classList.add("is-sel");
+      if (holIso(d) === holIso(sa)) cell.classList.add("sel-start");
+      if (holIso(d) === holIso(sb)) cell.classList.add("sel-end");
+    }
+    cell.addEventListener("click", () => onHolDayClick(d));
+    holCalGrid.appendChild(cell);
+  }
+  updateHolSelectedLabel();
+}
+
+function onHolDayClick(d) {
+  // Tapping the currently-selected single date again de-selects it.
+  if (holState.selStart && !holState.selEnd && holIso(holState.selStart) === holIso(d)) {
+    holState.selStart = null;
+    holState.selEnd = null;
+    renderHolCalendar();
+    return;
+  }
+  if (!holState.selStart || holState.selEnd) {
+    holState.selStart = new Date(d);
+    holState.selEnd = null;
+  } else if (d < holState.selStart) {
+    holState.selEnd = new Date(holState.selStart);
+    holState.selStart = new Date(d);
+  } else {
+    holState.selEnd = new Date(d);
+  }
+  renderHolCalendar();
+}
+
+function updateHolSelectedLabel() {
+  if (!holState.selStart) { holSelectedLabel.textContent = "尚未選擇日期"; return; }
+  let a = holState.selStart, b = holState.selEnd || holState.selStart;
+  if (b < a) { const t = a; a = b; b = t; }
+  holSelectedLabel.textContent = `已選：${holFmtRange(a, b)}（${holSpan(a, b)} 天）`;
+}
+
+function holEnterEdit(h) {
+  const s = holParse(h.start_date);
+  if (!s) return;
+  holState.editId = h.id;
+  holState.selStart = s;
+  holState.selEnd = holParse(h.end_date) || s;
+  holState.year = s.getFullYear();
+  holState.month = s.getMonth();
+  holNameInput.value = h.name || "";
+  holSaveBtn.textContent = "更新假期";
+  holCancelBtn.classList.remove("hidden");
+  renderHolCalendar();
+  renderHolidayList();
+}
+
+function holExitEdit() {
+  holState.editId = null;
+  holState.selStart = null;
+  holState.selEnd = null;
+  holNameInput.value = "";
+  holSaveBtn.textContent = "新增假期";
+  holCancelBtn.classList.add("hidden");
+  renderHolCalendar();
+  renderHolidayList();
+}
+
+async function holSave() {
+  if (!holState.selStart) { showToast("請先在月曆上選擇日期。"); return; }
+  let a = holState.selStart, b = holState.selEnd || holState.selStart;
+  if (b < a) { const t = a; a = b; b = t; }
+  const data = { start_date: holIso(a), end_date: holIso(b), name: holNameInput.value.trim() };
+  setButtonLoading(holSaveBtn, true);
+  let r;
+  try {
+    r = holState.editId
+      ? await invoke("update_holiday", { holidayId: holState.editId, data })
+      : await invoke("add_holiday", { data });
+  } finally {
+    setButtonLoading(holSaveBtn, false);
+  }
+  if (r && r.ok === false) { showToast(r.error || "儲存失敗。"); return; }
+  showToast(holState.editId ? "假期已更新" : "假期已新增", "success");
+  holViewYear = String(a.getFullYear()); // jump the list to the year just saved
+  holExitEdit();
+  await loadState();
+}
+
+function holRowEl(h) {
+  let s = holParse(h.start_date);
+  let e = holParse(h.end_date) || s;
+  const row = document.createElement("div");
+  row.className = "hol-row";
+  if (holState.editId === h.id) row.classList.add("editing");
+  let dateText, span;
+  if (s) {
+    if (e < s) { const t = s; s = e; e = t; }
+    dateText = holFmtRange(s, e);
+    span = `${holSpan(s, e)} 天`;
+  } else {
+    dateText = `${h.start_date} → ${h.end_date}`;
+    span = "";
+  }
+  row.innerHTML = `
+    <div class="hol-info"><span class="hol-date">${dateText}</span><span class="hol-name">${h.name || "假期"}</span></div>
+    <div class="hol-acts">
+      <span class="hol-span">${span}</span>
+      <button class="btn secondary btn-sm" data-hol-edit="${h.id}">編輯</button>
+      <button class="btn danger btn-sm" data-hol-del="${h.id}">刪除</button>
+    </div>`;
+  return row;
+}
+
+function renderHolidayList() {
+  if (!holidayList || !holYearChips) return;
+  holidayList.innerHTML = "";
+  holYearChips.innerHTML = "";
+  const all = appState.holidays || [];
+  const groups = new Map();
+  all.forEach((h) => {
+    const y = (h.start_date || "").split("-")[0] || "未設定";
+    if (!groups.has(y)) groups.set(y, []);
+    groups.get(y).push(h);
+  });
+  const currentYear = holToday().getFullYear();
+  const years = new Set([...groups.keys(), String(currentYear), String(currentYear + 1)]);
+  const yearList = Array.from(years).sort();
+  if (!holViewYear || !years.has(holViewYear)) {
+    holViewYear = years.has(String(currentYear)) ? String(currentYear) : yearList[yearList.length - 1];
+  }
+  yearList.forEach((year) => {
+    const count = (groups.get(year) || []).length;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "hol-year-chip" + (year === holViewYear ? " active" : "");
+    chip.innerHTML = `${year}<span class="hol-year-chip-count">${count}</span>`;
+    chip.addEventListener("click", () => { holViewYear = year; renderHolidayList(); });
+    holYearChips.appendChild(chip);
+  });
+  const rows = (groups.get(holViewYear) || []).slice().sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""));
+  if (rows.length === 0) {
+    holidayList.innerHTML = `<p class="muted-hint">${holViewYear} 年尚未設定任何假期。</p>`;
+    return;
+  }
+  rows.forEach((h) => holidayList.appendChild(holRowEl(h)));
+}
+
+function renderHolidays() { renderHolCalendar(); renderHolidayList(); }
+
+if (holSaveBtn) {
+  holSaveBtn.addEventListener("click", holSave);
+  holCancelBtn.addEventListener("click", holExitEdit);
+  document.getElementById("holPrevMonth").addEventListener("click", () => {
+    holState.month--;
+    if (holState.month < 0) { holState.month = 11; holState.year--; }
+    renderHolCalendar();
+  });
+  document.getElementById("holNextMonth").addEventListener("click", () => {
+    holState.month++;
+    if (holState.month > 11) { holState.month = 0; holState.year++; }
+    renderHolCalendar();
+  });
+  holidayList.addEventListener("click", (e) => {
+    const ed = e.target.closest("button[data-hol-edit]");
+    if (ed) {
+      const h = (appState.holidays || []).find((x) => x.id === ed.dataset.holEdit);
+      if (h) holEnterEdit(h);
+      return;
+    }
+    const del = e.target.closest("button[data-hol-del]");
+    if (del) holConfirmDelete(del.dataset.holDel, del);
+  });
+}
+
+function holConfirmDelete(id, btn) {
+  const acts = btn.parentElement;
+  if (acts.querySelector(".hol-confirm")) return;
+  const wrap = document.createElement("span");
+  wrap.className = "hol-confirm";
+  wrap.innerHTML = `<span>確定刪除？</span><button class="btn danger btn-sm" data-hol-yes="${id}">刪除</button><button class="btn secondary btn-sm" data-hol-no="1">取消</button>`;
+  acts.appendChild(wrap);
+  wrap.querySelector("[data-hol-yes]").addEventListener("click", async () => {
+    await invoke("delete_holiday", { holidayId: id });
+    if (holState.editId === id) holExitEdit();
+    showToast("假期已刪除", "success");
+    await loadState();
+  });
+  wrap.querySelector("[data-hol-no]").addEventListener("click", () => wrap.remove());
+}
 
 const taskInput = document.getElementById("taskInput");
 const taskTimeInput = document.getElementById("taskTimeInput");
@@ -1622,7 +1939,7 @@ function renderPriceSettings() {
     const item = document.createElement("div");
     item.className = "list-item";
     const priceLabel = Number.isFinite(row.price) ? `$${row.price}` : "未設定";
-    item.innerHTML = `<div>${row.level}</div><div>${priceLabel}</div>`;
+    item.innerHTML = `<div class="li-name">${row.level}</div><div class="li-price">${priceLabel}</div>`;
     priceList.appendChild(item);
   });
 }
@@ -1651,8 +1968,8 @@ function renderTextbookList() {
     const item = document.createElement("div");
     item.className = "list-item";
     item.innerHTML = `
-      <div>${name}</div>
-      <div>$${price}</div>
+      <div class="li-name">${name}</div>
+      <div class="li-price">$${price}</div>
       <div class="action-group">
         <button class="btn secondary btn-sm" data-textbook-edit="${name}" data-price="${price}" type="button">編輯</button>
         <button class="btn danger btn-sm" data-textbook-delete="${name}" type="button">刪除</button>
@@ -2125,38 +2442,6 @@ function getClassIssues(cls, context) {
     }
   }
   return issues;
-}
-
-function renderHolidays() {
-  holidayList.innerHTML = "";
-  const sorted = [...appState.holidays].sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""));
-  const groups = new Map();
-  sorted.forEach((holiday) => {
-    const year = (holiday.start_date || holiday.end_date || "").split("-")[0] || "未設定";
-    if (!groups.has(year)) {
-      groups.set(year, []);
-    }
-    groups.get(year).push(holiday);
-  });
-  const years = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
-  years.forEach((year) => {
-    const section = document.createElement("div");
-    section.className = "holiday-year";
-    section.innerHTML = `<div class="pill">${year}</div>`;
-    groups.get(year).forEach((holiday) => {
-      const item = document.createElement("div");
-      item.className = "list-item";
-      item.innerHTML = `
-        <div>
-          <div>${holiday.start_date} → ${holiday.end_date}</div>
-          <div class="pill">${holiday.name || "假期"}</div>
-        </div>
-        <button class="btn danger" data-holiday-id="${holiday.id}">刪除</button>
-      `;
-      section.appendChild(item);
-    });
-    holidayList.appendChild(section);
-  });
 }
 
 function renderReminders() {
@@ -3026,25 +3311,6 @@ async function addClass(event) {
   await loadState();
 }
 
-async function addHoliday(event) {
-  event.preventDefault();
-  const form = event.target;
-  const submitBtn = form.querySelector('button[type="submit"]');
-  const data = Object.fromEntries(new FormData(form));
-  setButtonLoading(submitBtn, true);
-  await invoke('add_holiday', { data });
-  setButtonLoading(submitBtn, false);
-  form.reset();
-  if (holidayEndDate) {
-    holidayEndDate.disabled = false;
-  }
-  await loadState();
-}
-
-async function deleteHoliday(id) {
-  await invoke('delete_holiday', { holidayId: id });
-  await loadState();
-}
 
 async function postponeClass(id) {
   await openScheduleModal(id);
@@ -3223,7 +3489,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 document.getElementById("classForm").addEventListener("submit", addClass);
-document.getElementById("holidayForm").addEventListener("submit", addHoliday);
 document.getElementById("refreshBtn").addEventListener("click", loadState);
 if (sidebarToggle && layout) {
   sidebarToggle.addEventListener("click", () => {
@@ -3276,20 +3541,6 @@ if (timeCalcMinutes) {
 }
 if (reminderSort) {
   reminderSort.addEventListener("change", renderReminders);
-}
-if (holidayOneDay && holidayStartDate && holidayEndDate) {
-  const syncHolidayEnd = () => {
-    if (!holidayOneDay.checked) {
-      holidayEndDate.disabled = false;
-      return;
-    }
-    if (holidayStartDate.value) {
-      holidayEndDate.value = holidayStartDate.value;
-    }
-    holidayEndDate.disabled = true;
-  };
-  holidayOneDay.addEventListener("change", syncHolidayEnd);
-  holidayStartDate.addEventListener("change", syncHolidayEnd);
 }
 if (locationSelect) {
   locationSelect.addEventListener("change", async () => {
@@ -3927,6 +4178,94 @@ document.querySelectorAll(".collapse-toggle").forEach((button) => {
   });
 });
 
+// Settings tab — sidebar navigation: switch the visible pane.
+document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const pane = btn.dataset.pane;
+    document.querySelectorAll(".settings-nav-item").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".settings-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === pane));
+  });
+});
+
+// --- 補課建議: suggest substitute classes at similar progress (補課安排 tab modal) ---
+const openMakeupSuggestBtn = document.getElementById("openMakeupSuggestBtn");
+const makeupSuggestModal = document.getElementById("makeupSuggestModal");
+const makeupSuggestClass = document.getElementById("makeupSuggestClass");
+const makeupSuggestDate = document.getElementById("makeupSuggestDate");
+const runMakeupSuggestBtn = document.getElementById("runMakeupSuggestBtn");
+const makeupSuggestList = document.getElementById("makeupSuggestList");
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+
+function populateMakeupSuggestClasses() {
+  const prev = makeupSuggestClass.value;
+  const active = (appState.classes || []).filter((c) => c.status === "active");
+  makeupSuggestClass.innerHTML = '<option value="">請選擇班別</option>';
+  active.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.sku}（${c.level}）`;
+    makeupSuggestClass.appendChild(opt);
+  });
+  if (prev) makeupSuggestClass.value = prev;
+}
+
+function renderMakeupSuggestions(r) {
+  makeupSuggestList.innerHTML = "";
+  const head = document.createElement("p");
+  head.className = "muted-hint";
+  const suggestions = r.suggestions || [];
+  if (suggestions.length === 0) {
+    head.textContent = `原班進度為第 ${r.target_index} 堂（${r.level}），但找不到進度相近的同級班別。`;
+    makeupSuggestList.appendChild(head);
+    return;
+  }
+  head.textContent = `原班進度：第 ${r.target_index} 堂（${r.level}）。建議以下進度相近的班別：`;
+  makeupSuggestList.appendChild(head);
+  suggestions.forEach((s) => {
+    const wd = WEEKDAY_LABELS[s.weekday] || "";
+    const item = document.createElement("div");
+    item.className = "list-item";
+    const otherLoc = s.same_location ? "" : " · 其他校";
+    item.innerHTML = `
+      <div>
+        <div>${s.sku} <span class="pill">第 ${s.suggested_index} 堂</span></div>
+        <div class="muted-hint">${s.suggested_date} · 逢星期${wd} ${s.time || ""} · ${s.teacher || "—"}${otherLoc}</div>
+      </div>
+      <span class="pill">差 ${s.index_diff} 堂</span>
+    `;
+    makeupSuggestList.appendChild(item);
+  });
+}
+
+if (openMakeupSuggestBtn) {
+  openMakeupSuggestBtn.addEventListener("click", () => {
+    populateMakeupSuggestClasses();
+    makeupSuggestList.innerHTML = "";
+    makeupSuggestModal.classList.remove("hidden");
+  });
+  document.getElementById("closeMakeupSuggest").addEventListener("click", () => {
+    makeupSuggestModal.classList.add("hidden");
+  });
+  runMakeupSuggestBtn.addEventListener("click", async () => {
+    const classId = makeupSuggestClass.value;
+    const absentDate = makeupSuggestDate.value;
+    if (!classId) { showToast("請先選擇學生原班。"); return; }
+    if (!absentDate) { showToast("請選擇缺席日期。"); return; }
+    setButtonLoading(runMakeupSuggestBtn, true);
+    let r;
+    try {
+      r = await invoke("suggest_makeup_classes", { classId, absentDate });
+    } finally {
+      setButtonLoading(runMakeupSuggestBtn, false);
+    }
+    if (!r.ok) {
+      showToast(r.error || "無法取得補課建議。");
+      return;
+    }
+    renderMakeupSuggestions(r);
+  });
+}
+
 teacherGenderFilter.addEventListener("change", renderSettings);
 
 calendarMonthBtn.addEventListener("click", () => {
@@ -3972,12 +4311,6 @@ if (calendarJumpYear) {
   });
 }
 
-holidayList.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-holiday-id]");
-  if (button) {
-    deleteHoliday(button.dataset.holidayId);
-  }
-});
 
 calendarView.addEventListener("click", (event) => {
   const toggleBtn = event.target.closest("button[data-action='toggle-room']");

@@ -28,6 +28,34 @@ pub fn add_holiday(
 }
 
 #[tauri::command]
+pub fn update_holiday(
+    session_token: String,
+    holiday_id: String,
+    data: Value,
+    sessions: tauri::State<'_, SessionStore>,
+    auth_db: tauri::State<'_, AuthDb>,
+) -> Value {
+    let _session = crate::require_auth!(sessions, auth_db, &session_token, "holidays.add");
+
+    let mut holidays = load_holidays();
+    let mut found = false;
+    for h in &mut holidays {
+        if h.id == holiday_id {
+            h.start_date = data.get("start_date").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            h.end_date = data.get("end_date").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            h.name = data.get("name").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return json!({"ok": false, "error": "找不到假期。"});
+    }
+    save_holidays(&holidays);
+    json!({"ok": true})
+}
+
+#[tauri::command]
 pub fn delete_holiday(
     session_token: String,
     holiday_id: String,
