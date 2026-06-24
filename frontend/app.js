@@ -177,31 +177,69 @@ function completeLogin(result) {
 }
 
 // --- Auto-update check ---
+// Hardened so a slow/failed/looping update can NEVER trap the user at the update
+// overlay: the check times out, the overlay always has a "skip into app" button,
+// a watchdog auto-dismisses a stuck download, and a skipped version is remembered
+// so a non-persisting update doesn't re-prompt on every relaunch.
 async function checkForUpdate() {
+  const overlay = document.getElementById('updateOverlay');
+  const status = document.getElementById('updateStatus');
+  const skipBtn = document.getElementById('updateSkipBtn');
+  const hideOverlay = () => { if (overlay) overlay.classList.add('hidden'); };
   try {
     const updater = window.__TAURI__?.updater;
     const process = window.__TAURI__?.process;
     if (!updater || !process) return;
-    const update = await updater.check();
-    if (update) {
-      const yes = confirm(`有新版本 v${update.version} 可用，是否更新？`);
-      if (yes) {
-        const overlay = document.getElementById('updateOverlay');
-        const status = document.getElementById('updateStatus');
-        overlay.classList.remove('hidden');
-        status.textContent = `正在下載 v${update.version}...`;
-        await update.downloadAndInstall();
-        status.textContent = '更新完成，正在重新啟動...';
-        await process.relaunch();
-      }
+
+    // Never let a hanging update check block boot.
+    const update = await Promise.race([
+      updater.check(),
+      new Promise((resolve) => setTimeout(() => resolve(null), 8000)),
+    ]);
+    if (!update) return;
+
+    // Respect a version the user previously chose to skip (breaks relaunch loops
+    // where the install doesn't actually take effect).
+    let skipped = null;
+    try { skipped = localStorage.getItem('skipUpdateVersion'); } catch {}
+    if (skipped === update.version) return;
+
+    const yes = confirm(`有新版本 v${update.version} 可用，是否更新？`);
+    if (!yes) {
+      try { localStorage.setItem('skipUpdateVersion', update.version); } catch {}
+      return;
+    }
+
+    overlay.classList.remove('hidden');
+    status.textContent = `正在下載 v${update.version}...`;
+
+    let finished = false;
+    const escape = (msg, type) => {
+      if (finished) return;
+      finished = true;
+      try { localStorage.setItem('skipUpdateVersion', update.version); } catch {}
+      hideOverlay();
+      if (msg) showToast(msg, type || 'info');
+    };
+    if (skipBtn) skipBtn.onclick = () => escape('已略過更新，可稍後在設定中再試。', 'info');
+    // Watchdog: if the download/install stalls, free the user.
+    const watchdog = setTimeout(() => escape('更新逾時，已略過。', 'error'), 120000);
+
+    try {
+      await update.downloadAndInstall();
+      clearTimeout(watchdog);
+      if (finished) return; // user skipped mid-download
+      finished = true;
+      status.textContent = '更新完成，正在重新啟動...';
+      await process.relaunch();
+    } catch (e) {
+      clearTimeout(watchdog);
+      console.log('Update install failed:', e);
+      escape('更新失敗，已略過。', 'error');
     }
   } catch (e) {
     console.log('Update check skipped:', e);
-    const overlay = document.getElementById('updateOverlay');
-    if (!overlay.classList.contains('hidden')) {
-      overlay.classList.add('hidden');
-      showToast('更新失敗，請稍後再試。', 'error');
-    }
+    hideOverlay();
   }
 }
 

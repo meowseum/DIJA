@@ -2844,3 +2844,8 @@ input.eps-custom-qty:focus {
   font-size: 15px;
   margin: 0;
 }
+.update-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
