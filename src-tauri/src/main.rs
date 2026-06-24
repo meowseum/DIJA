@@ -16,12 +16,19 @@ use std::sync::Mutex;
 
 fn main() {
     logger::init_logger();
+    tracing::info!(
+        "DIJA starting — v{} (GitHub auto-update removed; manual distribution)",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Initialise auth database (creates tables on first run)
     let auth_conn = auth::db::init_database();
 
+    // NOTE: the auto-updater plugin has been removed. The app no longer checks GitHub
+    // for updates; with no updater capability in the binary, a stale/cached frontend
+    // that still calls window.__TAURI__.updater simply bails out, so the update overlay
+    // can never appear. Updates are distributed manually.
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         // Managed state for auth
         .manage::<auth::db::AuthDb>(Mutex::new(auth_conn))
