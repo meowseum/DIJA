@@ -173,7 +173,9 @@ function completeLogin(result) {
   loadDocxTemplates();
   loadMessageTemplates();
   loadMakeupTemplate();
-  checkForUpdate();
+  // Auto-update via GitHub is disabled — updates are distributed manually for now.
+  // To re-enable: restore the checkForUpdate() call and the body below.
+  // checkForUpdate();
 }
 
 // --- Auto-update check ---
@@ -182,6 +184,12 @@ function completeLogin(result) {
 // a watchdog auto-dismisses a stuck download, and a skipped version is remembered
 // so a non-persisting update doesn't re-prompt on every relaunch.
 async function checkForUpdate() {
+  // GitHub auto-update is disabled for now (manual distribution). Hard-stop so the
+  // update overlay can never appear / trap the app at boot. Remove this return to re-enable.
+  const ov = document.getElementById('updateOverlay');
+  if (ov) ov.classList.add('hidden');
+  return;
+  /* eslint-disable no-unreachable */
   const overlay = document.getElementById('updateOverlay');
   const status = document.getElementById('updateStatus');
   const skipBtn = document.getElementById('updateSkipBtn');

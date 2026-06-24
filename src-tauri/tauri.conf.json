@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasrice/tauri/next/crates/tauri-schema-generator/schemas/config.schema.json",
   "productName": "DIJA",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "identifier": "com.dij.dija",
   "build": {
     "frontendDist": "../frontend"
@@ -35,7 +35,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": "v1Compatible",
     "icon": [
       "icons/icon.ico"
     ],
